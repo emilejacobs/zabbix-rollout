@@ -563,8 +563,7 @@ Timeout=30
 # =============================================================================
 
 # Disable remote commands (security best practice)
-EnableRemoteCommands=0
-LogRemoteCommands=0
+DenyKey=system.run[*]
 
 # =============================================================================
 # LOGGING
@@ -582,9 +581,6 @@ DebugLevel=3
 # =============================================================================
 # PLUGINS
 # =============================================================================
-
-# Disable remote commands in SystemRun plugin
-Plugins.SystemRun.LogRemoteCommands=0
 
 # =============================================================================
 # INCLUDE ADDITIONAL CONFIGURATION
