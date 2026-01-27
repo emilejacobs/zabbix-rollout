@@ -541,6 +541,9 @@ Timeout=30
 # SECURITY
 # =============================================================================
 
+# Allow running as root (macOS has no zabbix user by default)
+AllowRoot=1
+
 # Disable remote commands (security best practice)
 DenyKey=system.run[*]
 
