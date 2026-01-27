@@ -12,18 +12,20 @@ Automated Zabbix agent deployment scripts and templates for monitoring distribut
 
 ### Raspberry Pi
 ```bash
-curl -fsSL https://raw.githubusercontent.com/emilejacobs/zabbix-rollout/main/scripts/install-zabbix-agent-raspberrypi.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/emilejacobs/zabbix-rollout/main/scripts/install-zabbix-agent-raspberrypi.sh | sudo LOCATION=london bash
 ```
 
 ### Radxa Rock
 ```bash
-curl -fsSL https://raw.githubusercontent.com/emilejacobs/zabbix-rollout/main/scripts/install-zabbix-agent-radxa.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/emilejacobs/zabbix-rollout/main/scripts/install-zabbix-agent-radxa.sh | sudo LOCATION=london bash
 ```
 
 ### Mac Mini
 ```bash
-curl -fsSL https://raw.githubusercontent.com/emilejacobs/zabbix-rollout/main/scripts/install-zabbix-agent-macos.sh | bash
+curl -fsSL https://raw.githubusercontent.com/emilejacobs/zabbix-rollout/main/scripts/install-zabbix-agent-macos.sh | sudo LOCATION=london bash
 ```
+
+Replace `london` with your location identifier (e.g., `office-1`, `client-abc`, `datacenter-eu`).
 
 ## Repository Structure
 

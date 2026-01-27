@@ -10,11 +10,13 @@
 # - Configures auto-registration with Zabbix server
 # - Sets up hardware-specific monitoring (temperature, power, etc.)
 #
-# Usage: sudo ./install-zabbix-agent-macos.sh [hostname] [location]
+# Usage: sudo ./install-zabbix-agent-macos.sh [location]
+#        sudo LOCATION=xxx bash -c "$(curl -fsSL ...)"
 #
 # Examples:
-#   sudo ./install-zabbix-agent-macos.sh
-#   sudo ./install-zabbix-agent-macos.sh macmini-office-001 london
+#   sudo ./install-zabbix-agent-macos.sh london
+#   sudo LOCATION=london bash -c "$(curl -fsSL https://...)"
+#   curl -fsSL https://... | sudo LOCATION=london bash
 #
 # Note: This script requires Homebrew to be installed.
 #       If running as root, Homebrew commands will be run as the original user.
@@ -339,13 +341,21 @@ generate_hostname() {
         # Get location
         if [[ -n "$provided_location" ]]; then
             LOCATION="$provided_location"
-        else
+        elif [[ -n "${LOCATION:-}" ]]; then
+            # Use environment variable if set
+            info "Using location from environment: $LOCATION"
+        elif [[ -t 0 ]]; then
+            # Interactive mode - prompt user
             echo ""
             echo -e "${YELLOW}Enter a location identifier for this device (e.g., london, office-1, client-abc):${NC}"
             read -r LOCATION
             if [[ -z "$LOCATION" ]]; then
                 LOCATION="default"
             fi
+        else
+            # Non-interactive mode - use default
+            LOCATION="default"
+            warn "Non-interactive mode: using default location. Set LOCATION env var for custom location."
         fi
 
         # Sanitize location (lowercase, replace spaces with dashes)
@@ -375,13 +385,18 @@ install_zabbix_agent() {
     if run_brew list zabbix &>/dev/null; then
         warn "Zabbix is already installed via Homebrew"
 
-        echo -e "${YELLOW}Do you want to reinstall/upgrade? (y/N):${NC}"
-        read -r reinstall
-        if [[ "$reinstall" == "y" || "$reinstall" == "Y" ]]; then
-            info "Upgrading Zabbix..."
-            run_brew upgrade zabbix || run_brew reinstall zabbix
+        if [[ -t 0 ]]; then
+            echo -e "${YELLOW}Do you want to reinstall/upgrade? (y/N):${NC}"
+            read -r reinstall
+            if [[ "$reinstall" == "y" || "$reinstall" == "Y" ]]; then
+                info "Upgrading Zabbix..."
+                run_brew upgrade zabbix || run_brew reinstall zabbix
+            else
+                info "Skipping installation, will reconfigure existing agent"
+                return 0
+            fi
         else
-            info "Skipping installation, will reconfigure existing agent"
+            info "Non-interactive mode: reconfiguring existing agent"
             return 0
         fi
     else
@@ -904,11 +919,15 @@ main() {
     echo "  Tailscale IP: ${TAILSCALE_IP}"
     echo "  Server:       ${ZABBIX_SERVER_IP}"
     echo ""
-    echo -e "${YELLOW}Continue with installation? (Y/n):${NC}"
-    read -r confirm
-    if [[ "$confirm" == "n" || "$confirm" == "N" ]]; then
-        info "Installation cancelled by user"
-        exit 0
+    if [[ -t 0 ]]; then
+        echo -e "${YELLOW}Continue with installation? (Y/n):${NC}"
+        read -r confirm
+        if [[ "$confirm" == "n" || "$confirm" == "N" ]]; then
+            info "Installation cancelled by user"
+            exit 0
+        fi
+    else
+        info "Non-interactive mode: proceeding with installation"
     fi
 
     # Install Zabbix

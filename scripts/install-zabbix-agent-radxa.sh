@@ -318,13 +318,21 @@ generate_hostname() {
         # Get location
         if [[ -n "$provided_location" ]]; then
             LOCATION="$provided_location"
-        else
+        elif [[ -n "${LOCATION:-}" ]]; then
+            # Use environment variable if set
+            info "Using location from environment: $LOCATION"
+        elif [[ -t 0 ]]; then
+            # Interactive mode - prompt user
             echo ""
             echo -e "${YELLOW}Enter a location identifier for this device (e.g., london, office-1, client-abc):${NC}"
             read -r LOCATION
             if [[ -z "$LOCATION" ]]; then
                 LOCATION="default"
             fi
+        else
+            # Non-interactive mode - use default
+            LOCATION="default"
+            warn "Non-interactive mode: using default location. Set LOCATION env var for custom location."
         fi
 
         # Sanitize location (lowercase, replace spaces with dashes)
@@ -384,10 +392,15 @@ install_zabbix_agent() {
     if dpkg -l | grep -q "zabbix-agent2"; then
         warn "Zabbix Agent 2 is already installed"
 
-        echo -e "${YELLOW}Do you want to reinstall/upgrade? (y/N):${NC}"
-        read -r reinstall
-        if [[ "$reinstall" != "y" && "$reinstall" != "Y" ]]; then
-            info "Skipping installation, will reconfigure existing agent"
+        if [[ -t 0 ]]; then
+            echo -e "${YELLOW}Do you want to reinstall/upgrade? (y/N):${NC}"
+            read -r reinstall
+            if [[ "$reinstall" != "y" && "$reinstall" != "Y" ]]; then
+                info "Skipping installation, will reconfigure existing agent"
+                return 0
+            fi
+        else
+            info "Non-interactive mode: reconfiguring existing agent"
             return 0
         fi
     fi
@@ -801,12 +814,17 @@ main() {
     echo "  Tailscale IP: ${TAILSCALE_IP}"
     echo "  Server:       ${ZABBIX_SERVER_IP}"
     echo ""
-    echo -e "${YELLOW}Continue with installation? (Y/n):${NC}"
-    read -r confirm
-    if [[ "$confirm" == "n" || "$confirm" == "N" ]]; then
-        info "Installation cancelled by user"
-        exit 0
+    if [[ -t 0 ]]; then
+        echo -e "${YELLOW}Continue with installation? (Y/n):${NC}"
+        read -r confirm
+        if [[ "$confirm" == "n" || "$confirm" == "N" ]]; then
+            info "Installation cancelled by user"
+            exit 0
+        fi
+    else
+        info "Non-interactive mode: proceeding with installation"
     fi
+
 
     # Install Zabbix
     install_zabbix_repository
