@@ -68,19 +68,95 @@ The scripts automatically detect and populate the following inventory fields via
 | Gateway | netstat -rn | ip route | ip route |
 | Subnet mask | ifconfig | ip addr | ip addr |
 
+## Bulk Deployment
+
+For deploying to multiple devices at once, use the orchestration script with a CSV inventory file.
+
+### Prerequisites
+
+```bash
+brew install hudochenkov/sshpass/sshpass
+```
+
+### Inventory CSV
+
+Export `docs/rollout-inventory.xlsx` to CSV. Required columns:
+
+| Column | Required | Description |
+|--------|----------|-------------|
+| `device_name` | Yes | Hostname for the device |
+| `platform` | Yes | `raspberrypi`, `radxa`, or `macos` |
+| `tailscale_ip` | Yes | Tailscale VPN IP address |
+| `location` | Yes | Location identifier |
+| `client` | No | Client name |
+| `chain` | No | Chain/group name |
+| `asset_tag` | No | Physical asset tag |
+| `latitude` | No | GPS latitude |
+| `longitude` | No | GPS longitude |
+| `ssh_user` | Yes | SSH username |
+| `ssh_password` | Yes | SSH password |
+
+### Usage
+
+```bash
+# Preview what will happen (no changes)
+python3 scripts/deploy-agents.py --inventory inventory.csv --dry-run
+
+# Test SSH connectivity to all devices
+python3 scripts/deploy-agents.py --inventory inventory.csv --check
+
+# Deploy to a single device (for testing)
+ZABBIX_API_TOKEN=your-token python3 scripts/deploy-agents.py --inventory inventory.csv --device rpi-london-001
+
+# Deploy to all devices
+ZABBIX_API_TOKEN=your-token python3 scripts/deploy-agents.py --inventory inventory.csv
+
+# Deploy only Raspberry Pi devices
+ZABBIX_API_TOKEN=your-token python3 scripts/deploy-agents.py --inventory inventory.csv --platform raspberrypi
+
+# Resume after a partial deployment (skips successful devices)
+ZABBIX_API_TOKEN=your-token python3 scripts/deploy-agents.py --inventory inventory.csv --resume
+
+# Retry only failed devices
+ZABBIX_API_TOKEN=your-token python3 scripts/deploy-agents.py --inventory inventory.csv --retry-failed
+```
+
+The script uses SCP to copy install scripts to each device and execute them via SSH. Use `--github` to fetch scripts from GitHub instead. Deployment state is tracked in `rollout-state.json` for resume/retry support. Per-device logs are saved in the `logs/` directory.
+
+## Application Service Monitoring
+
+The install scripts automatically detect and configure monitoring for these application services:
+
+| Service | Detection (Linux) | Detection (macOS) |
+|---------|------------------|-------------------|
+| Raven | `raven.service` or process | `/Applications/Raven/raven` |
+| Raven Detection Server | `raven-detection-server.service` or process | `/Applications/RavenDetection/raven_detection_server.py` |
+| Transcriber | `transcriber.service` or process | `/Applications/uknomi-transcriber/transcriber_cpp.py` |
+
+For each detected service, the scripts configure:
+- **Running status** — process count (alert if 0)
+- **CPU usage** — percentage
+- **Memory usage** — RSS in bytes
+- **Uptime** — seconds since last start (detect restarts)
+
+Hosts are tagged with `service:raven` and/or `service:transcriber` for filtering in Zabbix. Import `templates/template_app_services.yaml` and link it to hosts that run these services.
+
 ## Repository Structure
 
 ```
 ├── scripts/
 │   ├── install-zabbix-agent-raspberrypi.sh
 │   ├── install-zabbix-agent-radxa.sh
-│   └── install-zabbix-agent-macos.sh
+│   ├── install-zabbix-agent-macos.sh
+│   └── deploy-agents.py
 ├── templates/
 │   ├── template_process_monitoring.yaml
+│   ├── template_app_services.yaml
 │   ├── template_raspberry_pi.yaml
 │   ├── template_radxa.yaml
 │   └── template_macos.yaml
 ├── docs/
+│   ├── rollout-inventory.xlsx
 │   ├── zabbix-server-setup.md
 │   ├── zabbix-api-setup.md
 │   └── template-import-guide.md
@@ -101,6 +177,7 @@ See [docs/zabbix-server-setup.md](docs/zabbix-server-setup.md) for auto-registra
 
 | Template | Platform | Description |
 |----------|----------|-------------|
+| Template Application Services | All | Raven, Raven Detection Server, Transcriber (CPU, memory, uptime, status) |
 | Template Process Monitoring Active | All | Critical process monitoring (tailscaled, sshd, zabbix_agent2) |
 | Template Hardware Raspberry Pi | Raspberry Pi | Temperature, voltage, throttling, firmware via vcgencmd |
 | Template Hardware Radxa Rock | Radxa | Thermal zones, CPU/GPU frequency, SoC metrics |

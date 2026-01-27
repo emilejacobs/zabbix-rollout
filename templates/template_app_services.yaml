@@ -1,0 +1,257 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: f8f7908280354f2abeed07dc788c3747
+      name: Templates/Custom
+  templates:
+    - uuid: 4bebc30e6b1b44c2844420769642348d
+      template: 'Template Application Services'
+      name: 'Template Application Services'
+      description: |
+        Monitors critical application services: Raven, Raven Detection Server, and Transcriber.
+        Items are UserParameter-based; only services detected during agent installation will report data.
+        Services not present on a host will return NOTSUPPORTED (expected behavior).
+      groups:
+        - name: Templates/Custom
+      macros:
+        - macro: '{$APP_SVC_RAVEN_MEM_WARN}'
+          value: '4294967296'
+          description: 'Raven memory warning threshold in bytes (default 4 GB)'
+        - macro: '{$APP_SVC_RAVEN_DETECT_MEM_WARN}'
+          value: '6442450944'
+          description: 'Raven Detection Server memory warning threshold in bytes (default 6 GB)'
+        - macro: '{$APP_SVC_TRANSCRIBER_MEM_WARN}'
+          value: '2147483648'
+          description: 'Transcriber memory warning threshold in bytes (default 2 GB)'
+        - macro: '{$APP_SVC_TRANSCRIBER_ERR_THRESHOLD}'
+          value: '5'
+          description: 'Transcriber error count threshold per 5-minute window'
+      items:
+        # =====================================================================
+        # Raven
+        # =====================================================================
+        - uuid: 011a6ab311f146b68e292739c7322a56
+          name: 'Raven: process running'
+          type: ZABBIX_ACTIVE
+          key: app.svc.raven.running
+          delay: 30s
+          history: 7d
+          trends: 90d
+          value_type: UNSIGNED
+          description: 'Number of Raven processes running (0 = not running)'
+          triggers:
+            - uuid: 2e3f659d0d0f4003a6200ef7701dcc28
+              expression: 'last(/Template Application Services/app.svc.raven.running)=0'
+              name: 'Raven is not running on {HOST.NAME}'
+              priority: DISASTER
+              description: 'The Raven service is not running. This is a critical application service.'
+        - uuid: 849dcdbd9ec04b7b9216106391fcbbda
+          name: 'Raven: CPU usage'
+          type: ZABBIX_ACTIVE
+          key: app.svc.raven.cpu
+          delay: 1m
+          history: 7d
+          trends: 90d
+          value_type: FLOAT
+          units: '%'
+          description: 'CPU usage percentage of the Raven process'
+          triggers:
+            - uuid: 0d45e7a643ad466d80c6bbc3fc8f8bfb
+              expression: 'avg(/Template Application Services/app.svc.raven.cpu,5m)>95'
+              name: 'Raven CPU usage is critically high on {HOST.NAME}'
+              priority: WARNING
+              description: 'Raven has been using more than 95% CPU for the last 5 minutes.'
+        - uuid: c458bb8829094af3b096eb61923ed2e7
+          name: 'Raven: memory usage (RSS)'
+          type: ZABBIX_ACTIVE
+          key: app.svc.raven.memory
+          delay: 1m
+          history: 7d
+          trends: 90d
+          value_type: UNSIGNED
+          units: B
+          description: 'Resident memory (RSS) used by the Raven process in bytes'
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 10m
+          triggers:
+            - uuid: c5c47167333d4c2d9a7b8621478d80d0
+              expression: 'last(/Template Application Services/app.svc.raven.memory)>{$APP_SVC_RAVEN_MEM_WARN}'
+              name: 'Raven memory usage is high on {HOST.NAME}'
+              priority: WARNING
+              description: 'Raven is using more than {$APP_SVC_RAVEN_MEM_WARN} bytes of memory.'
+        - uuid: 661fee78ffdf490fb6b00e734ae7f45e
+          name: 'Raven: service uptime'
+          type: ZABBIX_ACTIVE
+          key: app.svc.raven.uptime
+          delay: 1m
+          history: 7d
+          trends: 90d
+          value_type: UNSIGNED
+          units: s
+          description: 'Uptime of the Raven process in seconds (resets on restart)'
+          triggers:
+            - uuid: c85662aa1e3f431d815623f149c8596f
+              expression: 'last(/Template Application Services/app.svc.raven.uptime)<300 and change(/Template Application Services/app.svc.raven.uptime)<0'
+              name: 'Raven has restarted on {HOST.NAME}'
+              priority: INFO
+              description: 'The Raven service appears to have restarted (uptime dropped below 5 minutes).'
+              manual_close: 'YES'
+        # =====================================================================
+        # Raven Detection Server
+        # =====================================================================
+        - uuid: eb5f3f5cb00a47edb74f8be7c220b8e5
+          name: 'Raven Detection Server: process running'
+          type: ZABBIX_ACTIVE
+          key: app.svc.raven_detection.running
+          delay: 30s
+          history: 7d
+          trends: 90d
+          value_type: UNSIGNED
+          description: 'Number of Raven Detection Server processes running (0 = not running)'
+          triggers:
+            - uuid: aa14405d89d64a009e36eacb8b658958
+              expression: 'last(/Template Application Services/app.svc.raven_detection.running)=0'
+              name: 'Raven Detection Server is not running on {HOST.NAME}'
+              priority: DISASTER
+              description: 'The Raven Detection Server is not running. This is a critical application service.'
+        - uuid: c907117dd3ef40648024443e31db288f
+          name: 'Raven Detection Server: CPU usage'
+          type: ZABBIX_ACTIVE
+          key: app.svc.raven_detection.cpu
+          delay: 1m
+          history: 7d
+          trends: 90d
+          value_type: FLOAT
+          units: '%'
+          description: 'CPU usage percentage of the Raven Detection Server process'
+          triggers:
+            - uuid: be9244dfc3e1425685fe27d61a3fc44b
+              expression: 'avg(/Template Application Services/app.svc.raven_detection.cpu,5m)>95'
+              name: 'Raven Detection Server CPU usage is critically high on {HOST.NAME}'
+              priority: WARNING
+              description: 'Raven Detection Server has been using more than 95% CPU for the last 5 minutes.'
+        - uuid: 87505ee238804199a0be09174e00623c
+          name: 'Raven Detection Server: memory usage (RSS)'
+          type: ZABBIX_ACTIVE
+          key: app.svc.raven_detection.memory
+          delay: 1m
+          history: 7d
+          trends: 90d
+          value_type: UNSIGNED
+          units: B
+          description: 'Resident memory (RSS) used by the Raven Detection Server process in bytes'
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 10m
+          triggers:
+            - uuid: f5ce8aa79c6f4e5484eb25263dcbe418
+              expression: 'last(/Template Application Services/app.svc.raven_detection.memory)>{$APP_SVC_RAVEN_DETECT_MEM_WARN}'
+              name: 'Raven Detection Server memory usage is high on {HOST.NAME}'
+              priority: WARNING
+              description: 'Raven Detection Server is using more than {$APP_SVC_RAVEN_DETECT_MEM_WARN} bytes of memory.'
+        - uuid: 61f8fd762a9e46f6af92e3dd6c512718
+          name: 'Raven Detection Server: service uptime'
+          type: ZABBIX_ACTIVE
+          key: app.svc.raven_detection.uptime
+          delay: 1m
+          history: 7d
+          trends: 90d
+          value_type: UNSIGNED
+          units: s
+          description: 'Uptime of the Raven Detection Server process in seconds (resets on restart)'
+          triggers:
+            - uuid: bd5c6f3c6ebe4cb2878c3d1ec06d2151
+              expression: 'last(/Template Application Services/app.svc.raven_detection.uptime)<300 and change(/Template Application Services/app.svc.raven_detection.uptime)<0'
+              name: 'Raven Detection Server has restarted on {HOST.NAME}'
+              priority: INFO
+              description: 'The Raven Detection Server appears to have restarted (uptime dropped below 5 minutes).'
+              manual_close: 'YES'
+        # =====================================================================
+        # Transcriber
+        # =====================================================================
+        - uuid: 5128cc61401549f3b394df7bf12fd48e
+          name: 'Transcriber: process running'
+          type: ZABBIX_ACTIVE
+          key: app.svc.transcriber.running
+          delay: 30s
+          history: 7d
+          trends: 90d
+          value_type: UNSIGNED
+          description: 'Number of Transcriber processes running (0 = not running)'
+          triggers:
+            - uuid: 8b30e80563944cbd9e4f1f22601c7585
+              expression: 'last(/Template Application Services/app.svc.transcriber.running)=0'
+              name: 'Transcriber is not running on {HOST.NAME}'
+              priority: DISASTER
+              description: 'The Transcriber service is not running. This is a critical application service.'
+        - uuid: 0250578b0e5f4eacb95322a6b99551b7
+          name: 'Transcriber: CPU usage'
+          type: ZABBIX_ACTIVE
+          key: app.svc.transcriber.cpu
+          delay: 1m
+          history: 7d
+          trends: 90d
+          value_type: FLOAT
+          units: '%'
+          description: 'CPU usage percentage of the Transcriber process'
+          triggers:
+            - uuid: 1ac2d4d948954f0a9b11ed86d0a784f0
+              expression: 'avg(/Template Application Services/app.svc.transcriber.cpu,5m)>95'
+              name: 'Transcriber CPU usage is critically high on {HOST.NAME}'
+              priority: WARNING
+              description: 'Transcriber has been using more than 95% CPU for the last 5 minutes.'
+        - uuid: 4ee904e4a3094049acc8b2dbd74339e2
+          name: 'Transcriber: memory usage (RSS)'
+          type: ZABBIX_ACTIVE
+          key: app.svc.transcriber.memory
+          delay: 1m
+          history: 7d
+          trends: 90d
+          value_type: UNSIGNED
+          units: B
+          description: 'Resident memory (RSS) used by the Transcriber process in bytes'
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 10m
+          triggers:
+            - uuid: a7519d0fd8134a419101f6147440a4e8
+              expression: 'last(/Template Application Services/app.svc.transcriber.memory)>{$APP_SVC_TRANSCRIBER_MEM_WARN}'
+              name: 'Transcriber memory usage is high on {HOST.NAME}'
+              priority: WARNING
+              description: 'Transcriber is using more than {$APP_SVC_TRANSCRIBER_MEM_WARN} bytes of memory.'
+        - uuid: c6d83d9e921a4902994cf3039fc9d447
+          name: 'Transcriber: service uptime'
+          type: ZABBIX_ACTIVE
+          key: app.svc.transcriber.uptime
+          delay: 1m
+          history: 7d
+          trends: 90d
+          value_type: UNSIGNED
+          units: s
+          description: 'Uptime of the Transcriber process in seconds (resets on restart)'
+          triggers:
+            - uuid: 92eff78bdd7c470e96c4a39e0e1acd29
+              expression: 'last(/Template Application Services/app.svc.transcriber.uptime)<300 and change(/Template Application Services/app.svc.transcriber.uptime)<0'
+              name: 'Transcriber has restarted on {HOST.NAME}'
+              priority: INFO
+              description: 'The Transcriber service appears to have restarted (uptime dropped below 5 minutes).'
+              manual_close: 'YES'
+        - uuid: a409ae5255ec445bb5fd29e1761bb246
+          name: 'Transcriber: log errors (last 5 min)'
+          type: ZABBIX_ACTIVE
+          key: app.svc.transcriber.errors
+          delay: 5m
+          history: 30d
+          trends: 90d
+          value_type: UNSIGNED
+          description: 'Count of [ERROR] entries in the Transcriber log over the last 5 minutes. Uses journalctl on Linux, unified log on macOS.'
+          triggers:
+            - uuid: a3eab96cc743480fa7f6be8f29d67da7
+              expression: 'last(/Template Application Services/app.svc.transcriber.errors)>{$APP_SVC_TRANSCRIBER_ERR_THRESHOLD}'
+              name: 'Transcriber errors detected on {HOST.NAME} ({ITEM.LASTVALUE} in last 5 min)'
+              priority: HIGH
+              description: 'The Transcriber service has logged more than {$APP_SVC_TRANSCRIBER_ERR_THRESHOLD} errors in the last 5 minutes.'

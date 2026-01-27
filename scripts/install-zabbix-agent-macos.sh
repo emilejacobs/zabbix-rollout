@@ -732,6 +732,92 @@ EOF
 }
 
 # =============================================================================
+# APPLICATION SERVICE DETECTION
+# =============================================================================
+
+# Global flags for detected services (used by set_host_tags)
+HAS_RAVEN=false
+HAS_TRANSCRIBER=false
+
+detect_and_configure_services() {
+    info "Detecting application services..."
+
+    # Detect Raven services (check application path and/or running process)
+    if [[ -f "/Applications/Raven/raven" ]] || pgrep -f "/Applications/Raven/raven" &>/dev/null; then
+        HAS_RAVEN=true
+        info "Detected: Raven (/Applications/Raven/raven)"
+    fi
+
+    # Detect Transcriber service
+    if [[ -f "/Applications/uknomi-transcriber/transcriber_cpp.py" ]] || pgrep -f "transcriber_cpp" &>/dev/null; then
+        HAS_TRANSCRIBER=true
+        info "Detected: Transcriber (/Applications/uknomi-transcriber/transcriber_cpp.py)"
+    fi
+
+    # If no services found, skip config
+    if [[ "$HAS_RAVEN" == false && "$HAS_TRANSCRIBER" == false ]]; then
+        info "No application services detected — skipping service monitoring config"
+        return 0
+    fi
+
+    local svc_config="${ZABBIX_CONF_D}/app-services.conf"
+    mkdir -p "$ZABBIX_CONF_D"
+
+    cat > "$svc_config" << 'SVCEOF'
+# Application Service Monitoring
+# Auto-detected during Zabbix agent installation
+SVCEOF
+
+    if [[ "$HAS_RAVEN" == true ]]; then
+        info "Configuring monitoring for Raven services..."
+        cat >> "$svc_config" << 'SVCEOF'
+
+# --- Raven ---
+# Running: count of raven processes (match binary path, exclude detection server and startup script)
+UserParameter=app.svc.raven.running,ps aux | grep '/Applications/Raven/raven' | grep -v grep | grep -v raven_detection | grep -v raven-startup | grep -c raven || echo "0"
+# CPU usage (%)
+UserParameter=app.svc.raven.cpu,ps aux | grep '/Applications/Raven/raven' | grep -v grep | grep -v raven_detection | grep -v raven-startup | grep -v '.sh' | awk '{sum+=$3} END {print sum+0}'
+# Memory RSS (bytes)
+UserParameter=app.svc.raven.memory,ps aux | grep '/Applications/Raven/raven' | grep -v grep | grep -v raven_detection | grep -v raven-startup | grep -v '.sh' | awk '{sum+=$6} END {print sum*1024}'
+# Uptime (seconds since process started)
+UserParameter=app.svc.raven.uptime,ps -p $(pgrep -f '/Applications/Raven/raven' | head -1) -o etime= 2>/dev/null | awk '{n=split($1,a,"-"); if(n==2){days=a[1]; rest=a[2]}else{days=0; rest=a[1]} n2=split(rest,b,":"); if(n2==3){h=b[1];m=b[2];s=b[3]}else if(n2==2){h=0;m=b[1];s=b[2]}else{h=0;m=0;s=b[1]} print days*86400+h*3600+m*60+s}' || echo "0"
+
+# --- Raven Detection Server ---
+# Running: count of raven_detection_server processes
+UserParameter=app.svc.raven_detection.running,ps aux | grep 'raven_detection_server' | grep -v grep | wc -l | tr -d ' '
+# CPU usage (%)
+UserParameter=app.svc.raven_detection.cpu,ps aux | grep 'raven_detection_server' | grep -v grep | awk '{sum+=$3} END {print sum+0}'
+# Memory RSS (bytes)
+UserParameter=app.svc.raven_detection.memory,ps aux | grep 'raven_detection_server' | grep -v grep | awk '{sum+=$6} END {print sum*1024}'
+# Uptime (seconds since process started)
+UserParameter=app.svc.raven_detection.uptime,ps -p $(pgrep -f 'raven_detection_server' | head -1) -o etime= 2>/dev/null | awk '{n=split($1,a,"-"); if(n==2){days=a[1]; rest=a[2]}else{days=0; rest=a[1]} n2=split(rest,b,":"); if(n2==3){h=b[1];m=b[2];s=b[3]}else if(n2==2){h=0;m=b[1];s=b[2]}else{h=0;m=0;s=b[1]} print days*86400+h*3600+m*60+s}' || echo "0"
+SVCEOF
+        success "Raven service monitoring configured"
+    fi
+
+    if [[ "$HAS_TRANSCRIBER" == true ]]; then
+        info "Configuring monitoring for Transcriber service..."
+        cat >> "$svc_config" << 'SVCEOF'
+
+# --- Transcriber ---
+# Running: count of transcriber_cpp processes
+UserParameter=app.svc.transcriber.running,ps aux | grep 'transcriber_cpp' | grep -v grep | wc -l | tr -d ' '
+# CPU usage (%)
+UserParameter=app.svc.transcriber.cpu,ps aux | grep 'transcriber_cpp' | grep -v grep | awk '{sum+=$3} END {print sum+0}'
+# Memory RSS (bytes)
+UserParameter=app.svc.transcriber.memory,ps aux | grep 'transcriber_cpp' | grep -v grep | awk '{sum+=$6} END {print sum*1024}'
+# Uptime (seconds since process started)
+UserParameter=app.svc.transcriber.uptime,ps -p $(pgrep -f 'transcriber_cpp' | head -1) -o etime= 2>/dev/null | awk '{n=split($1,a,"-"); if(n==2){days=a[1]; rest=a[2]}else{days=0; rest=a[1]} n2=split(rest,b,":"); if(n2==3){h=b[1];m=b[2];s=b[3]}else if(n2==2){h=0;m=b[1];s=b[2]}else{h=0;m=0;s=b[1]} print days*86400+h*3600+m*60+s}' || echo "0"
+# Log errors in the last 5 minutes (from launchd log file)
+UserParameter=app.svc.transcriber.errors,awk -v cutoff="$(date -v-5M '+%Y-%m-%d %H:%M:%S')" '{ts=substr($0,1,19); if(ts >= cutoff && /\[ERROR\]/) count++} END {print count+0}' /Library/Logs/uknomi-transcriber/transcriber.log 2>/dev/null || echo "0"
+SVCEOF
+        success "Transcriber service monitoring configured"
+    fi
+
+    success "Application service monitoring configuration complete"
+}
+
+# =============================================================================
 # SERVICE MANAGEMENT
 # =============================================================================
 
@@ -1027,6 +1113,14 @@ set_host_tags() {
         tags+=",{\"tag\":\"chain\",\"value\":\"${CHAIN}\"}"
     fi
 
+    # Application service tags
+    if [[ "$HAS_RAVEN" == true ]]; then
+        tags+=",{\"tag\":\"service\",\"value\":\"raven\"}"
+    fi
+    if [[ "$HAS_TRANSCRIBER" == true ]]; then
+        tags+=",{\"tag\":\"service\",\"value\":\"transcriber\"}"
+    fi
+
     tags+="]"
 
     local response=$(zabbix_api_call "host.update" "{\"hostid\":\"${ZABBIX_HOST_ID}\",\"tags\":${tags}}")
@@ -1246,6 +1340,7 @@ main() {
     # Configure
     configure_agent
     configure_macos_monitoring
+    detect_and_configure_services
 
     # Setup log directory with correct permissions
     setup_log_directory

@@ -19,3 +19,12 @@ Thumbs.db
 
 # Logs
 *.log
+logs/
+
+# Deployment artifacts
+rollout-state.json
+
+# Inventory files with credentials
+inventory.csv
+docs/rollout-inventory.csv
+docs/rollout-inventory.xlsx
