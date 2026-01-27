@@ -656,17 +656,16 @@ UserParameter=macos.processes.total,ps aux 2>/dev/null | wc -l | xargs || echo "
 UserParameter=macos.processes.zombie,ps aux 2>/dev/null | grep -c ' Z ' || echo "0"
 
 # Process count by name (compatible with proc.num key used by templates)
-# These override the built-in proc.num which doesn't work well on macOS
-UserParameter=proc.num[*],pgrep -x "$1" 2>/dev/null | wc -l | xargs || echo "0"
+# Uses case statement to translate Linux process names to macOS equivalents:
+#   - zabbix_agent2 -> zabbix_agentd (macOS uses agentd, not agent2)
+#   - sshd -> sshd-session (macOS SSH process name)
+#   - empty -> total process count
+UserParameter=proc.num[*],case "\$1" in zabbix_agent2) pgrep -x zabbix_agentd ;; sshd) pgrep -f sshd-session ;; "") ps aux | wc -l ;; *) pgrep -x "\$1" ;; esac 2>/dev/null | wc -l | tr -d " "
 
-# Specific critical process checks
+# Specific critical process checks (macOS native names)
 UserParameter=macos.proc.tailscaled,pgrep -x tailscaled 2>/dev/null | wc -l | xargs || echo "0"
-UserParameter=macos.proc.sshd,pgrep -x sshd 2>/dev/null | wc -l | xargs || echo "0"
+UserParameter=macos.proc.sshd,pgrep -f sshd-session 2>/dev/null | wc -l | xargs || echo "0"
 UserParameter=macos.proc.zabbix_agentd,pgrep -x zabbix_agentd 2>/dev/null | wc -l | xargs || echo "0"
-
-# Alias for cross-platform template compatibility
-# Template checks for zabbix_agent2 (Linux) but macOS runs zabbix_agentd
-UserParameter=proc.num[zabbix_agent2],pgrep -x zabbix_agentd 2>/dev/null | wc -l | xargs || echo "0"
 
 # =============================================================================
 # SECURITY MONITORING
@@ -706,17 +705,17 @@ setup_log_directory() {
     # Create log directory
     mkdir -p "$ZABBIX_LOG_DIR"
 
-    # Set permissions - needs to be writable by the agent
+    # Set permissions - directory and files need to be writable by zabbix user
     chown root:wheel "$ZABBIX_LOG_DIR"
-    chmod 755 "$ZABBIX_LOG_DIR"
+    chmod 777 "$ZABBIX_LOG_DIR"
 
-    # Create log files with correct permissions
+    # Create log files with world-writable permissions (agent runs as zabbix user)
     touch "$ZABBIX_LOG_DIR/zabbix_agentd.log"
     touch "$ZABBIX_LOG_DIR/zabbix_agentd.stdout.log"
     touch "$ZABBIX_LOG_DIR/zabbix_agentd.stderr.log"
-    chmod 644 "$ZABBIX_LOG_DIR/zabbix_agentd.log"
-    chmod 644 "$ZABBIX_LOG_DIR/zabbix_agentd.stdout.log"
-    chmod 644 "$ZABBIX_LOG_DIR/zabbix_agentd.stderr.log"
+    chmod 666 "$ZABBIX_LOG_DIR/zabbix_agentd.log"
+    chmod 666 "$ZABBIX_LOG_DIR/zabbix_agentd.stdout.log"
+    chmod 666 "$ZABBIX_LOG_DIR/zabbix_agentd.stderr.log"
 
     success "Log directory configured"
 }
@@ -796,25 +795,34 @@ EOF
 start_agent_service() {
     info "Starting Zabbix Agent service..."
 
-    local plist_file="/Library/LaunchDaemons/com.zabbix.zabbix_agentd.plist"
+    # Kill any existing zabbix processes
+    pkill -9 zabbix_agentd 2>/dev/null || true
+    sleep 1
 
-    # Unload if already loaded
-    launchctl unload "$plist_file" 2>/dev/null || true
+    # Find the binary path
+    local zabbix_binary=$(ls /opt/homebrew/Cellar/zabbix/*/sbin/zabbix_agentd 2>/dev/null | head -1)
+    if [[ -z "$zabbix_binary" ]]; then
+        zabbix_binary=$(ls /usr/local/Cellar/zabbix/*/sbin/zabbix_agentd 2>/dev/null | head -1)
+    fi
 
-    # Load the service
-    launchctl load "$plist_file" || fatal "Failed to load Zabbix Agent service"
+    if [[ -z "$zabbix_binary" ]] || [[ ! -f "$zabbix_binary" ]]; then
+        fatal "Could not find zabbix_agentd binary"
+    fi
+
+    # Start the agent directly (more reliable than launchd)
+    "$zabbix_binary" -c "$ZABBIX_CONF_FILE"
 
     # Wait for service to start
-    sleep 3
+    sleep 2
 
     # Check if running
-    if launchctl list | grep -q "com.zabbix.zabbix_agentd"; then
+    if pgrep -x zabbix_agentd > /dev/null; then
         success "Zabbix Agent service is running"
     else
-        error "Zabbix Agent service may not be running"
+        error "Zabbix Agent service failed to start"
         echo ""
         echo "Check logs at: ${ZABBIX_LOG_DIR}/zabbix_agentd.log"
-        echo "And: ${ZABBIX_LOG_DIR}/zabbix_agentd.stderr.log"
+        tail -10 "${ZABBIX_LOG_DIR}/zabbix_agentd.log" 2>/dev/null || true
     fi
 }
 
