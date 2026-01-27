@@ -404,7 +404,7 @@ install_zabbix_agent() {
         run_brew install zabbix || fatal "Failed to install Zabbix via Homebrew"
     fi
 
-    success "Zabbix Agent 2 installed"
+    success "Zabbix Agent installed"
 
     # Get installed version
     local zabbix_version=$(run_brew info zabbix --json | grep -o '"version":"[^"]*"' | head -1 | cut -d'"' -f4)
@@ -416,13 +416,13 @@ install_zabbix_agent() {
 # =============================================================================
 
 configure_agent() {
-    info "Configuring Zabbix Agent 2..."
+    info "Configuring Zabbix Agent..."
 
     # Determine config paths based on Homebrew prefix
     BREW_PREFIX=$(get_brew_prefix)
     ZABBIX_CONF_DIR="${BREW_PREFIX}/etc/zabbix"
-    ZABBIX_CONF_FILE="${ZABBIX_CONF_DIR}/zabbix_agent2.conf"
-    ZABBIX_CONF_D="${ZABBIX_CONF_DIR}/zabbix_agent2.d"
+    ZABBIX_CONF_FILE="${ZABBIX_CONF_DIR}/zabbix_agentd.conf"
+    ZABBIX_CONF_D="${ZABBIX_CONF_DIR}/zabbix_agentd.d"
     ZABBIX_LOG_DIR="${BREW_PREFIX}/var/log/zabbix"
 
     # Create directories
@@ -514,20 +514,13 @@ LogRemoteCommands=0
 # =============================================================================
 
 # Log file location
-LogFile=${ZABBIX_LOG_DIR}/zabbix_agent2.log
+LogFile=${ZABBIX_LOG_DIR}/zabbix_agentd.log
 
 # Log file size in MB (0 = no rotation)
 LogFileSize=10
 
 # Debug level (0-5, 3 = warnings)
 DebugLevel=3
-
-# =============================================================================
-# PLUGINS
-# =============================================================================
-
-# Disable remote commands in SystemRun plugin
-Plugins.SystemRun.LogRemoteCommands=0
 
 # =============================================================================
 # INCLUDE ADDITIONAL CONFIGURATION
@@ -699,22 +692,33 @@ create_launchd_plist() {
     info "Creating launchd service configuration..."
 
     BREW_PREFIX=$(get_brew_prefix)
-    local plist_file="/Library/LaunchDaemons/com.zabbix.zabbix_agent2.plist"
-    local zabbix_agent2_path="${BREW_PREFIX}/sbin/zabbix_agent2"
+    local plist_file="/Library/LaunchDaemons/com.zabbix.zabbix_agentd.plist"
+    local zabbix_agent_path=""
 
-    # Find the actual zabbix_agent2 binary
-    if [[ ! -f "$zabbix_agent2_path" ]]; then
-        zabbix_agent2_path="${BREW_PREFIX}/bin/zabbix_agent2"
-    fi
-    if [[ ! -f "$zabbix_agent2_path" ]]; then
-        zabbix_agent2_path=$(which zabbix_agent2 2>/dev/null || echo "${BREW_PREFIX}/opt/zabbix/sbin/zabbix_agent2")
+    # Find the zabbix_agentd binary (Homebrew installs agentd, not agent2)
+    for path in \
+        "${BREW_PREFIX}/sbin/zabbix_agentd" \
+        "${BREW_PREFIX}/bin/zabbix_agentd" \
+        "${BREW_PREFIX}/opt/zabbix/sbin/zabbix_agentd" \
+        "$(brew --prefix zabbix 2>/dev/null)/sbin/zabbix_agentd" \
+        "/opt/homebrew/Cellar/zabbix/*/sbin/zabbix_agentd"
+    do
+        if [[ -f "$path" ]]; then
+            zabbix_agent_path="$path"
+            break
+        fi
+    done
+
+    # Try glob expansion for versioned path
+    if [[ -z "$zabbix_agent_path" ]]; then
+        zabbix_agent_path=$(ls /opt/homebrew/Cellar/zabbix/*/sbin/zabbix_agentd 2>/dev/null | head -1)
     fi
 
-    if [[ ! -f "$zabbix_agent2_path" ]]; then
-        fatal "Could not find zabbix_agent2 binary"
+    if [[ -z "$zabbix_agent_path" ]] || [[ ! -f "$zabbix_agent_path" ]]; then
+        fatal "Could not find zabbix_agentd binary"
     fi
 
-    info "Using binary: $zabbix_agent2_path"
+    info "Using binary: $zabbix_agent_path"
 
     # Create the plist file
     cat > "$plist_file" << EOF
@@ -723,10 +727,10 @@ create_launchd_plist() {
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.zabbix.zabbix_agent2</string>
+    <string>com.zabbix.zabbix_agentd</string>
     <key>ProgramArguments</key>
     <array>
-        <string>${zabbix_agent2_path}</string>
+        <string>${zabbix_agent_path}</string>
         <string>-c</string>
         <string>${ZABBIX_CONF_FILE}</string>
         <string>-f</string>
@@ -736,9 +740,9 @@ create_launchd_plist() {
     <key>KeepAlive</key>
     <true/>
     <key>StandardOutPath</key>
-    <string>${ZABBIX_LOG_DIR}/zabbix_agent2.stdout.log</string>
+    <string>${ZABBIX_LOG_DIR}/zabbix_agentd.stdout.log</string>
     <key>StandardErrorPath</key>
-    <string>${ZABBIX_LOG_DIR}/zabbix_agent2.stderr.log</string>
+    <string>${ZABBIX_LOG_DIR}/zabbix_agentd.stderr.log</string>
     <key>WorkingDirectory</key>
     <string>${BREW_PREFIX}/var</string>
 </dict>
@@ -752,27 +756,27 @@ EOF
 }
 
 start_agent_service() {
-    info "Starting Zabbix Agent 2 service..."
+    info "Starting Zabbix Agent service..."
 
-    local plist_file="/Library/LaunchDaemons/com.zabbix.zabbix_agent2.plist"
+    local plist_file="/Library/LaunchDaemons/com.zabbix.zabbix_agentd.plist"
 
     # Unload if already loaded
     launchctl unload "$plist_file" 2>/dev/null || true
 
     # Load the service
-    launchctl load "$plist_file" || fatal "Failed to load Zabbix Agent 2 service"
+    launchctl load "$plist_file" || fatal "Failed to load Zabbix Agent service"
 
     # Wait for service to start
     sleep 3
 
     # Check if running
-    if launchctl list | grep -q "com.zabbix.zabbix_agent2"; then
-        success "Zabbix Agent 2 service is running"
+    if launchctl list | grep -q "com.zabbix.zabbix_agentd"; then
+        success "Zabbix Agent service is running"
     else
-        error "Zabbix Agent 2 service may not be running"
+        error "Zabbix Agent service may not be running"
         echo ""
-        echo "Check logs at: ${ZABBIX_LOG_DIR}/zabbix_agent2.log"
-        echo "And: ${ZABBIX_LOG_DIR}/zabbix_agent2.stderr.log"
+        echo "Check logs at: ${ZABBIX_LOG_DIR}/zabbix_agentd.log"
+        echo "And: ${ZABBIX_LOG_DIR}/zabbix_agentd.stderr.log"
     fi
 }
 
@@ -784,13 +788,12 @@ verify_installation() {
     info "Verifying installation..."
 
     BREW_PREFIX=$(get_brew_prefix)
-    local zabbix_agent2_path="${BREW_PREFIX}/sbin/zabbix_agent2"
+    local zabbix_agent_path=""
 
-    if [[ ! -f "$zabbix_agent2_path" ]]; then
-        zabbix_agent2_path="${BREW_PREFIX}/bin/zabbix_agent2"
-    fi
-    if [[ ! -f "$zabbix_agent2_path" ]]; then
-        zabbix_agent2_path=$(which zabbix_agent2 2>/dev/null || echo "${BREW_PREFIX}/opt/zabbix/sbin/zabbix_agent2")
+    # Find the zabbix_agentd binary
+    zabbix_agent_path=$(ls /opt/homebrew/Cellar/zabbix/*/sbin/zabbix_agentd 2>/dev/null | head -1)
+    if [[ -z "$zabbix_agent_path" ]]; then
+        zabbix_agent_path="${BREW_PREFIX}/sbin/zabbix_agentd"
     fi
 
     echo ""
@@ -801,7 +804,7 @@ verify_installation() {
 
     # Check service status
     echo -n "Service Status: "
-    if launchctl list | grep -q "com.zabbix.zabbix_agent2"; then
+    if launchctl list | grep -q "com.zabbix.zabbix_agentd"; then
         echo -e "${GREEN}RUNNING${NC}"
     else
         echo -e "${RED}NOT RUNNING${NC}"
@@ -809,11 +812,11 @@ verify_installation() {
 
     # Check agent version
     echo -n "Agent Version:  "
-    "$zabbix_agent2_path" -V 2>/dev/null | head -1 || echo "Unable to determine"
+    "$zabbix_agent_path" -V 2>/dev/null | head -1 || echo "Unable to determine"
 
     # Check configuration
     echo -n "Config Test:    "
-    if "$zabbix_agent2_path" -c "$ZABBIX_CONF_FILE" -t agent.ping &>/dev/null; then
+    if "$zabbix_agent_path" -c "$ZABBIX_CONF_FILE" -t agent.ping &>/dev/null; then
         echo -e "${GREEN}PASSED${NC}"
     else
         echo -e "${RED}FAILED${NC}"
@@ -843,7 +846,7 @@ verify_installation() {
     echo "Listen Port:      ${ZABBIX_AGENT_PORT}"
     echo ""
     echo "Config File:      ${ZABBIX_CONF_FILE}"
-    echo "Log File:         ${ZABBIX_LOG_DIR}/zabbix_agent2.log"
+    echo "Log File:         ${ZABBIX_LOG_DIR}/zabbix_agentd.log"
     echo "Install Log:      ${LOG_FILE}"
     echo ""
 
@@ -853,22 +856,22 @@ verify_installation() {
     echo "============================================="
     echo ""
     echo -n "agent.ping:             "
-    "$zabbix_agent2_path" -c "$ZABBIX_CONF_FILE" -t agent.ping 2>/dev/null | tail -1 || echo "FAILED"
+    "$zabbix_agent_path" -c "$ZABBIX_CONF_FILE" -t agent.ping 2>/dev/null | tail -1 || echo "FAILED"
 
     echo -n "system.hostname:        "
-    "$zabbix_agent2_path" -c "$ZABBIX_CONF_FILE" -t system.hostname 2>/dev/null | tail -1 || echo "FAILED"
+    "$zabbix_agent_path" -c "$ZABBIX_CONF_FILE" -t system.hostname 2>/dev/null | tail -1 || echo "FAILED"
 
     echo -n "system.uptime:          "
-    "$zabbix_agent2_path" -c "$ZABBIX_CONF_FILE" -t system.uptime 2>/dev/null | tail -1 || echo "FAILED"
+    "$zabbix_agent_path" -c "$ZABBIX_CONF_FILE" -t system.uptime 2>/dev/null | tail -1 || echo "FAILED"
 
     echo -n "macos.model:            "
-    "$zabbix_agent2_path" -c "$ZABBIX_CONF_FILE" -t macos.model 2>/dev/null | tail -1 || echo "FAILED"
+    "$zabbix_agent_path" -c "$ZABBIX_CONF_FILE" -t macos.model 2>/dev/null | tail -1 || echo "FAILED"
 
     echo -n "macos.cpu.cores:        "
-    "$zabbix_agent2_path" -c "$ZABBIX_CONF_FILE" -t macos.cpu.cores 2>/dev/null | tail -1 || echo "FAILED"
+    "$zabbix_agent_path" -c "$ZABBIX_CONF_FILE" -t macos.cpu.cores 2>/dev/null | tail -1 || echo "FAILED"
 
     echo -n "macos.memory.pressure:  "
-    "$zabbix_agent2_path" -c "$ZABBIX_CONF_FILE" -t macos.memory.pressure 2>/dev/null | tail -1 || echo "FAILED"
+    "$zabbix_agent_path" -c "$ZABBIX_CONF_FILE" -t macos.memory.pressure 2>/dev/null | tail -1 || echo "FAILED"
 
     echo ""
 }
@@ -880,7 +883,7 @@ verify_installation() {
 main() {
     echo ""
     echo "============================================="
-    echo "  Zabbix Agent 2 Installer for macOS"
+    echo "  Zabbix Agent Installer for macOS"
     echo "============================================="
     echo ""
     echo "Zabbix Server: ${ZABBIX_SERVER_IP}"
@@ -953,8 +956,8 @@ main() {
     echo "Check your Zabbix server's Configuration → Hosts to verify registration."
     echo ""
     echo "To check agent status:  launchctl list | grep zabbix"
-    echo "To view agent logs:     tail -f ${ZABBIX_LOG_DIR}/zabbix_agent2.log"
-    echo "To restart agent:       sudo launchctl unload /Library/LaunchDaemons/com.zabbix.zabbix_agent2.plist && sudo launchctl load /Library/LaunchDaemons/com.zabbix.zabbix_agent2.plist"
+    echo "To view agent logs:     tail -f ${ZABBIX_LOG_DIR}/zabbix_agentd.log"
+    echo "To restart agent:       sudo launchctl unload /Library/LaunchDaemons/com.zabbix.zabbix_agentd.plist && sudo launchctl load /Library/LaunchDaemons/com.zabbix.zabbix_agentd.plist"
     echo ""
 
     log "INFO" "Installation completed successfully"
