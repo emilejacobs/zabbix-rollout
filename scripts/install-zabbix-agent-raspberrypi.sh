@@ -828,7 +828,7 @@ add('macaddress_a', '''${INV_MAC}''')
 add('hardware', '''${INV_HARDWARE}''')
 add('software', '''${INV_SOFTWARE}''')
 add('host_router', '''${INV_ROUTER}''')
-add('host_subnet', '''${INV_SUBNET}''')
+add('host_netmask', '''${INV_SUBNET}''')
 add('host_networks', '''${INV_NETWORK}''')
 add('notes', '''Tailscale IP: ${TAILSCALE_IP} | Local IP: ${INV_LOCAL_IP} | RAM: ${INV_RAM}''')
 add('location', '''${LOCATION}''')
@@ -848,7 +848,8 @@ print(json.dumps(inv))
     if echo "$response" | python3 -c "import sys,json; r=json.load(sys.stdin); assert r.get('result')" 2>/dev/null; then
         success "Host inventory set successfully"
     else
-        warn "Failed to set host inventory"
+        local err_msg=$(echo "$response" | python3 -c "import sys,json; r=json.load(sys.stdin); print(r.get('error',{}).get('data','Unknown error'))" 2>/dev/null)
+        warn "Failed to set host inventory: $err_msg"
     fi
 }
 

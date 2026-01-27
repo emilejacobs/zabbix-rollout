@@ -277,7 +277,7 @@ curl -s -X POST -H "Content-Type: application/json" \
         "serialno_a": "C02ABC123DEF",
         "host_networks": "192.168.1.0/24",
         "host_router": "192.168.1.1",
-        "host_subnet": "255.255.255.0"
+        "host_netmask": "255.255.255.0"
       }
     },
     "id": 1
@@ -398,7 +398,7 @@ After installing and starting the Zabbix agent, each script will:
 | Location longitude | `location_lon` | `LONGITUDE` env variable |
 | Host networks | `host_networks` | Auto-detected (local network CIDR) |
 | Host router | `host_router` | Auto-detected (default gateway) |
-| Host subnet mask | `host_subnet` | Auto-detected |
+| Host subnet mask | `host_netmask` | Auto-detected |
 | Notes | `notes` | Tailscale IP + hostname |
 
 ### Tags Set by Scripts
@@ -478,7 +478,7 @@ Not all inventory field names are obvious. Common field names:
 | Location latitude | `location_lat` |
 | Location longitude | `location_lon` |
 | Host networks | `host_networks` |
-| Host subnet mask | `host_subnet` |
+| Host subnet mask | `host_netmask` |
 | Host router | `host_router` |
 | OOB IP address | `oob_ip` |
 | Notes | `notes` |
