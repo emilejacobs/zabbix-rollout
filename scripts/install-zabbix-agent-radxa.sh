@@ -394,19 +394,47 @@ generate_hostname() {
 install_zabbix_repository() {
     info "Adding Zabbix repository..."
 
-    # Determine repository URL based on OS type
-    local repo_url="https://repo.zabbix.com/zabbix/${ZABBIX_VERSION}/${REPO_TYPE}/${REPO_CODENAME}/pool/main/z/zabbix-release/zabbix-release_latest_all.deb"
+    # Map OS codename to Debian/Ubuntu version number
+    local os_version_num=""
+    case "$OS_CODENAME" in
+        bookworm)  os_version_num="12" ;;
+        bullseye)  os_version_num="11" ;;
+        buster)    os_version_num="10" ;;
+        trixie)    os_version_num="13" ;;
+        jammy)     os_version_num="22.04" ;;
+        focal)     os_version_num="20.04" ;;
+        noble)     os_version_num="24.04" ;;
+        *)         os_version_num="12" ;;
+    esac
+
     local repo_deb="/tmp/zabbix-release.deb"
+
+    # Determine version suffix format based on OS type
+    local version_suffix=""
+    if [[ "$REPO_TYPE" == "ubuntu" ]]; then
+        version_suffix="+ubuntu${os_version_num}"
+    else
+        version_suffix="+debian${os_version_num}"
+    fi
+
+    # Zabbix 7.4+ uses release/ path
+    local repo_url="https://repo.zabbix.com/zabbix/${ZABBIX_VERSION}/release/${REPO_TYPE}/pool/main/z/zabbix-release/zabbix-release_latest${version_suffix}_all.deb"
 
     info "Downloading from: $repo_url"
 
     if ! wget -q "$repo_url" -O "$repo_deb" 2>/dev/null; then
-        # Try alternative URL structure
-        repo_url="https://repo.zabbix.com/zabbix/${ZABBIX_VERSION}/${REPO_TYPE}/pool/main/z/zabbix-release/zabbix-release_latest+${REPO_TYPE}${OS_VERSION}_all.deb"
-        info "Trying alternative URL: $repo_url"
+        # Fallback: try stable/ path
+        repo_url="https://repo.zabbix.com/zabbix/${ZABBIX_VERSION}/stable/${REPO_TYPE}/pool/main/z/zabbix-release/zabbix-release_latest${version_suffix}_all.deb"
+        info "Trying stable path: $repo_url"
 
-        if ! wget -q "$repo_url" -O "$repo_deb"; then
-            fatal "Failed to download Zabbix repository package"
+        if ! wget -q "$repo_url" -O "$repo_deb" 2>/dev/null; then
+            # Fallback: try legacy path
+            repo_url="https://repo.zabbix.com/zabbix/${ZABBIX_VERSION}/${REPO_TYPE}/${REPO_CODENAME}/pool/main/z/zabbix-release/zabbix-release_latest_all.deb"
+            info "Trying legacy path: $repo_url"
+
+            if ! wget -q "$repo_url" -O "$repo_deb"; then
+                fatal "Failed to download Zabbix repository package"
+            fi
         fi
     fi
 

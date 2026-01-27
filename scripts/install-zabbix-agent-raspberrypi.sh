@@ -333,17 +333,36 @@ generate_hostname() {
 install_zabbix_repository() {
     info "Adding Zabbix repository..."
 
-    # Download repository package
-    local repo_url="https://repo.zabbix.com/zabbix/${ZABBIX_VERSION}/raspbian/${REPO_CODENAME}/pool/main/z/zabbix-release/zabbix-release_latest_all.deb"
+    # Map OS codename to Debian version number
+    local debian_version=""
+    case "$OS_CODENAME" in
+        bookworm)  debian_version="12" ;;
+        bullseye)  debian_version="11" ;;
+        buster)    debian_version="10" ;;
+        trixie)    debian_version="13" ;;
+        *)         debian_version="12" ;;
+    esac
+
     local repo_deb="/tmp/zabbix-release.deb"
 
-    # Try Raspberry Pi OS specific repo first, fall back to Debian
-    if ! wget -q "$repo_url" -O "$repo_deb" 2>/dev/null; then
-        info "Raspberry Pi repo not found, trying Debian repository..."
-        repo_url="https://repo.zabbix.com/zabbix/${ZABBIX_VERSION}/debian/${REPO_CODENAME}/pool/main/z/zabbix-release/zabbix-release_latest_all.deb"
+    # Zabbix 7.4+ uses release/ path with +debianNN naming
+    local repo_url="https://repo.zabbix.com/zabbix/${ZABBIX_VERSION}/release/raspbian/pool/main/z/zabbix-release/zabbix-release_latest+debian${debian_version}_all.deb"
 
-        if ! wget -q "$repo_url" -O "$repo_deb"; then
-            fatal "Failed to download Zabbix repository package from $repo_url"
+    info "Downloading from: $repo_url"
+
+    if ! wget -q "$repo_url" -O "$repo_deb" 2>/dev/null; then
+        # Fallback: try stable/ path
+        repo_url="https://repo.zabbix.com/zabbix/${ZABBIX_VERSION}/stable/raspbian/pool/main/z/zabbix-release/zabbix-release_latest+debian${debian_version}_all.deb"
+        info "Trying stable path: $repo_url"
+
+        if ! wget -q "$repo_url" -O "$repo_deb" 2>/dev/null; then
+            # Fallback: try legacy path
+            repo_url="https://repo.zabbix.com/zabbix/${ZABBIX_VERSION}/raspbian/${REPO_CODENAME}/pool/main/z/zabbix-release/zabbix-release_latest_all.deb"
+            info "Trying legacy path: $repo_url"
+
+            if ! wget -q "$repo_url" -O "$repo_deb"; then
+                fatal "Failed to download Zabbix repository package"
+            fi
         fi
     fi
 
