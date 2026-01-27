@@ -656,11 +656,11 @@ UserParameter=macos.processes.total,ps aux 2>/dev/null | wc -l | xargs || echo "
 UserParameter=macos.processes.zombie,ps aux 2>/dev/null | grep -c ' Z ' || echo "0"
 
 # Process count by name (compatible with proc.num key used by templates)
-# Uses case statement to translate Linux process names to macOS equivalents:
+# Uses if/case to translate Linux process names to macOS equivalents:
 #   - zabbix_agent2 -> zabbix_agentd (macOS uses agentd, not agent2)
 #   - sshd -> sshd-session (macOS SSH process name)
 #   - empty -> total process count
-UserParameter=proc.num[*],case "\$1" in zabbix_agent2) pgrep -x zabbix_agentd ;; sshd) pgrep -f sshd-session ;; "") ps aux | wc -l ;; *) pgrep -x "\$1" ;; esac 2>/dev/null | wc -l | tr -d " "
+UserParameter=proc.num[*],if [ -z "\$1" ]; then ps aux | wc -l | tr -d " "; elif [ "\$1" = "zabbix_agent2" ]; then pgrep -x zabbix_agentd | wc -l | tr -d " "; elif [ "\$1" = "sshd" ]; then pgrep -f sshd-session | wc -l | tr -d " "; else pgrep -x "\$1" | wc -l | tr -d " "; fi
 
 # Specific critical process checks (macOS native names)
 UserParameter=macos.proc.tailscaled,pgrep -x tailscaled 2>/dev/null | wc -l | xargs || echo "0"
