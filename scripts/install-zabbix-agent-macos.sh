@@ -13,10 +13,24 @@
 # Usage: sudo ./install-zabbix-agent-macos.sh [location]
 #        sudo LOCATION=xxx bash -c "$(curl -fsSL ...)"
 #
+# Environment Variables:
+#   LOCATION          (required) Location identifier (e.g., london, office-1)
+#   ZABBIX_API_TOKEN  (optional) API token for setting tags and inventory
+#   CLIENT            (optional) Client name tag
+#   CHAIN             (optional) Chain/group tag
+#   ASSET_TAG         (optional) Physical asset tag identifier
+#   LATITUDE          (optional) GPS latitude for Zabbix map
+#   LONGITUDE         (optional) GPS longitude for Zabbix map
+#
 # Examples:
 #   sudo ./install-zabbix-agent-macos.sh london
 #   sudo LOCATION=london bash -c "$(curl -fsSL https://...)"
 #   curl -fsSL https://... | sudo LOCATION=london bash
+#
+# Full example with API integration:
+#   curl -fsSL https://... | sudo LOCATION=london CLIENT=acme \
+#     CHAIN=uk-south ASSET_TAG=MM-001 LATITUDE=51.5074 LONGITUDE=-0.1278 \
+#     ZABBIX_API_TOKEN=your-token-here bash
 #
 # Note: This script requires Homebrew to be installed.
 #       If running as root, Homebrew commands will be run as the original user.
@@ -31,6 +45,19 @@ set -e
 ZABBIX_SERVER_IP="100.122.201.5"
 ZABBIX_SERVER_PORT="10051"
 ZABBIX_AGENT_PORT="10050"
+
+# Zabbix API
+ZABBIX_API_URL="https://${ZABBIX_SERVER_IP}/api_jsonrpc.php"
+ZABBIX_API_TOKEN="${ZABBIX_API_TOKEN:-}"
+
+# Optional: Host tags
+CLIENT="${CLIENT:-}"
+CHAIN="${CHAIN:-}"
+
+# Optional: Inventory parameters
+ASSET_TAG="${ASSET_TAG:-}"
+LATITUDE="${LATITUDE:-}"
+LONGITUDE="${LONGITUDE:-}"
 
 # Log file location
 LOG_FILE="/var/log/zabbix-agent-install.log"
@@ -923,6 +950,209 @@ verify_installation() {
 }
 
 # =============================================================================
+# ZABBIX API INTEGRATION
+# =============================================================================
+
+zabbix_api_call() {
+    local method="$1"
+    local params="$2"
+
+    curl -sk -X POST \
+        -H "Content-Type: application/json" \
+        -H "Authorization: Bearer ${ZABBIX_API_TOKEN}" \
+        -d "{\"jsonrpc\":\"2.0\",\"method\":\"${method}\",\"params\":${params},\"id\":1}" \
+        "${ZABBIX_API_URL}" 2>/dev/null
+}
+
+wait_for_host_registration() {
+    info "Waiting for host to appear in Zabbix..."
+
+    local max_attempts=12
+    local attempt=0
+
+    while [[ $attempt -lt $max_attempts ]]; do
+        attempt=$((attempt + 1))
+
+        local response=$(zabbix_api_call "host.get" "{\"output\":[\"hostid\"],\"filter\":{\"host\":[\"${ZABBIX_HOSTNAME}\"]}}")
+
+        ZABBIX_HOST_ID=$(echo "$response" | python3 -c "
+import sys, json
+try:
+    r = json.load(sys.stdin)
+    if r.get('result') and len(r['result']) > 0:
+        print(r['result'][0]['hostid'])
+    else:
+        print('')
+except:
+    print('')
+" 2>/dev/null)
+
+        if [[ -n "$ZABBIX_HOST_ID" ]]; then
+            success "Host registered with ID: $ZABBIX_HOST_ID"
+            return 0
+        fi
+
+        info "Attempt $attempt/$max_attempts - host not yet registered, waiting 10s..."
+        sleep 10
+    done
+
+    warn "Host did not appear in Zabbix within 2 minutes"
+    warn "Tags and inventory will not be set automatically"
+    return 1
+}
+
+set_host_tags() {
+    info "Setting host tags..."
+
+    local tags="["
+    tags+="{\"tag\":\"device-type\",\"value\":\"mac-mini\"}"
+    tags+=",{\"tag\":\"os\",\"value\":\"macos\"}"
+
+    if [[ -n "$LOCATION" ]]; then
+        tags+=",{\"tag\":\"location\",\"value\":\"${LOCATION}\"}"
+    fi
+    if [[ -n "$CLIENT" ]]; then
+        tags+=",{\"tag\":\"client\",\"value\":\"${CLIENT}\"}"
+    fi
+    if [[ -n "$CHAIN" ]]; then
+        tags+=",{\"tag\":\"chain\",\"value\":\"${CHAIN}\"}"
+    fi
+
+    tags+="]"
+
+    local response=$(zabbix_api_call "host.update" "{\"hostid\":\"${ZABBIX_HOST_ID}\",\"tags\":${tags}}")
+
+    if echo "$response" | python3 -c "import sys,json; r=json.load(sys.stdin); assert r.get('result')" 2>/dev/null; then
+        success "Host tags set successfully"
+    else
+        warn "Failed to set host tags"
+    fi
+}
+
+collect_system_info_macos() {
+    info "Collecting system information for inventory..."
+
+    INV_OS="macOS ${MACOS_VERSION}"
+    INV_TYPE="Mac Mini"
+    INV_MODEL="${MAC_MODEL:-Unknown}"
+    INV_SERIAL="${MAC_SERIAL:-}"
+    INV_HARDWARE="${MAC_CHIP:-$(sysctl -n machdep.cpu.brand_string 2>/dev/null || echo '')}"
+
+    # MAC address (primary interface)
+    INV_MAC=$(ifconfig en0 2>/dev/null | grep ether | awk '{print $2}' || echo "")
+
+    # RAM in human-readable
+    local ram_bytes=$(sysctl -n hw.memsize 2>/dev/null || echo "0")
+    INV_RAM="$((ram_bytes / 1073741824)) GB"
+
+    # Local IP (non-Tailscale)
+    INV_LOCAL_IP=$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || echo "")
+
+    # Default gateway
+    INV_ROUTER=$(netstat -rn 2>/dev/null | awk '/^default/ {print $2; exit}' || echo "")
+
+    # Subnet mask
+    local hex_mask=$(ifconfig en0 2>/dev/null | awk '/inet / {print $4}' || echo "")
+    if [[ -n "$hex_mask" && "$hex_mask" == 0x* ]]; then
+        INV_SUBNET=$(python3 -c "m=int('${hex_mask}',16); print(f'{(m>>24)&0xff}.{(m>>16)&0xff}.{(m>>8)&0xff}.{m&0xff}')" 2>/dev/null || echo "")
+    else
+        INV_SUBNET="${hex_mask}"
+    fi
+
+    # Network
+    if [[ -n "$INV_LOCAL_IP" ]]; then
+        INV_NETWORK="${INV_LOCAL_IP}/${INV_SUBNET}"
+    else
+        INV_NETWORK=""
+    fi
+
+    success "System information collected"
+}
+
+set_host_inventory() {
+    info "Setting host inventory..."
+
+    # Build inventory JSON using python3 (handles escaping properly)
+    local inventory_json=$(python3 -c "
+import json
+inv = {}
+def add(key, val):
+    if val:
+        inv[key] = str(val)
+
+add('os', '''${INV_OS}''')
+add('type', '''${INV_TYPE}''')
+add('model', '''${INV_MODEL}''')
+add('serialno_a', '''${INV_SERIAL}''')
+add('macaddress_a', '''${INV_MAC}''')
+add('hardware', '''${INV_HARDWARE}''')
+add('software', '''macOS ${MACOS_VERSION} (${MACOS_BUILD})''')
+add('host_router', '''${INV_ROUTER}''')
+add('host_subnet', '''${INV_SUBNET}''')
+add('host_networks', '''${INV_NETWORK}''')
+add('notes', '''Tailscale IP: ${TAILSCALE_IP} | Local IP: ${INV_LOCAL_IP}''')
+add('location', '''${LOCATION}''')
+add('asset_tag', '''${ASSET_TAG}''')
+add('location_lat', '''${LATITUDE}''')
+add('location_lon', '''${LONGITUDE}''')
+print(json.dumps(inv))
+" 2>/dev/null)
+
+    if [[ -z "$inventory_json" || "$inventory_json" == "{}" ]]; then
+        warn "Could not build inventory JSON"
+        return 1
+    fi
+
+    local response=$(zabbix_api_call "host.update" "{\"hostid\":\"${ZABBIX_HOST_ID}\",\"inventory_mode\":1,\"inventory\":${inventory_json}}")
+
+    if echo "$response" | python3 -c "import sys,json; r=json.load(sys.stdin); assert r.get('result')" 2>/dev/null; then
+        success "Host inventory set successfully"
+    else
+        warn "Failed to set host inventory"
+    fi
+}
+
+configure_via_api() {
+    if [[ -z "$ZABBIX_API_TOKEN" ]]; then
+        info "No ZABBIX_API_TOKEN provided - skipping API configuration (tags, inventory)"
+        info "To enable, re-run with ZABBIX_API_TOKEN=your-token"
+        return 0
+    fi
+
+    # Check dependencies
+    if ! command -v curl &>/dev/null; then
+        warn "curl not found - skipping API configuration"
+        return 1
+    fi
+    if ! command -v python3 &>/dev/null; then
+        warn "python3 not found - skipping API configuration"
+        return 1
+    fi
+
+    # Verify API token works
+    local version_response=$(zabbix_api_call "apiinfo.version" "[]")
+    if ! echo "$version_response" | python3 -c "import sys,json; r=json.load(sys.stdin); assert r.get('result')" 2>/dev/null; then
+        warn "Could not connect to Zabbix API at ${ZABBIX_API_URL}"
+        warn "Skipping tags and inventory configuration"
+        return 1
+    fi
+
+    info "Zabbix API connection verified"
+
+    # Wait for host registration
+    if ! wait_for_host_registration; then
+        return 1
+    fi
+
+    # Collect system info and configure
+    collect_system_info_macos
+    set_host_tags
+    set_host_inventory
+
+    success "Zabbix API configuration complete"
+}
+
+# =============================================================================
 # MAIN EXECUTION
 # =============================================================================
 
@@ -996,17 +1226,34 @@ main() {
     # Verify
     verify_installation
 
+    # Configure via API (tags, inventory) - runs after agent starts
+    configure_via_api
+
     echo ""
     echo -e "${GREEN}=============================================${NC}"
     echo -e "${GREEN}  INSTALLATION COMPLETE${NC}"
     echo -e "${GREEN}=============================================${NC}"
     echo ""
     echo "The agent should auto-register with the Zabbix server within 2 minutes."
-    echo "Check your Zabbix server's Configuration → Hosts to verify registration."
+    echo "Check your Zabbix server's Data collection → Hosts to verify registration."
     echo ""
-    echo "To check agent status:  launchctl list | grep zabbix"
+    if [[ -n "$ZABBIX_API_TOKEN" ]]; then
+        echo "API Status:       Tags and inventory configured"
+    else
+        echo "API Status:       Skipped (no ZABBIX_API_TOKEN provided)"
+    fi
+    if [[ -n "$CLIENT" ]]; then
+        echo "Client:           ${CLIENT}"
+    fi
+    if [[ -n "$CHAIN" ]]; then
+        echo "Chain:            ${CHAIN}"
+    fi
+    if [[ -n "$ASSET_TAG" ]]; then
+        echo "Asset Tag:        ${ASSET_TAG}"
+    fi
+    echo ""
+    echo "To check agent status:  pgrep -x zabbix_agentd"
     echo "To view agent logs:     tail -f ${ZABBIX_LOG_DIR}/zabbix_agentd.log"
-    echo "To restart agent:       sudo launchctl unload /Library/LaunchDaemons/com.zabbix.zabbix_agentd.plist && sudo launchctl load /Library/LaunchDaemons/com.zabbix.zabbix_agentd.plist"
     echo ""
 
     log "INFO" "Installation completed successfully"

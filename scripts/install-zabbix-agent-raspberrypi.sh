@@ -14,9 +14,23 @@
 # Usage: sudo ./install-zabbix-agent-raspberrypi.sh [location]
 #        curl -fsSL https://... | sudo LOCATION=xxx bash
 #
+# Environment Variables:
+#   LOCATION          (required) Location identifier (e.g., london, office-1)
+#   ZABBIX_API_TOKEN  (optional) API token for setting tags and inventory
+#   CLIENT            (optional) Client name tag
+#   CHAIN             (optional) Chain/group tag
+#   ASSET_TAG         (optional) Physical asset tag identifier
+#   LATITUDE          (optional) GPS latitude for Zabbix map
+#   LONGITUDE         (optional) GPS longitude for Zabbix map
+#
 # Examples:
 #   sudo ./install-zabbix-agent-raspberrypi.sh london
 #   curl -fsSL https://... | sudo LOCATION=london bash
+#
+# Full example with API integration:
+#   curl -fsSL https://... | sudo LOCATION=london CLIENT=acme \
+#     CHAIN=uk-south ASSET_TAG=RPI-001 LATITUDE=51.5074 LONGITUDE=-0.1278 \
+#     ZABBIX_API_TOKEN=your-token-here bash
 #
 
 set -e
@@ -29,6 +43,19 @@ ZABBIX_SERVER_IP="100.122.201.5"
 ZABBIX_SERVER_PORT="10051"
 ZABBIX_AGENT_PORT="10050"
 ZABBIX_VERSION="7.4"
+
+# Zabbix API
+ZABBIX_API_URL="https://${ZABBIX_SERVER_IP}/api_jsonrpc.php"
+ZABBIX_API_TOKEN="${ZABBIX_API_TOKEN:-}"
+
+# Optional: Host tags
+CLIENT="${CLIENT:-}"
+CHAIN="${CHAIN:-}"
+
+# Optional: Inventory parameters
+ASSET_TAG="${ASSET_TAG:-}"
+LATITUDE="${LATITUDE:-}"
+LONGITUDE="${LONGITUDE:-}"
 
 # Log file location
 LOG_FILE="/var/log/zabbix-agent-install.log"
@@ -639,6 +666,220 @@ verify_installation() {
 }
 
 # =============================================================================
+# ZABBIX API INTEGRATION
+# =============================================================================
+
+zabbix_api_call() {
+    local method="$1"
+    local params="$2"
+
+    curl -sk -X POST \
+        -H "Content-Type: application/json" \
+        -H "Authorization: Bearer ${ZABBIX_API_TOKEN}" \
+        -d "{\"jsonrpc\":\"2.0\",\"method\":\"${method}\",\"params\":${params},\"id\":1}" \
+        "${ZABBIX_API_URL}" 2>/dev/null
+}
+
+wait_for_host_registration() {
+    info "Waiting for host to appear in Zabbix..."
+
+    local max_attempts=12
+    local attempt=0
+
+    while [[ $attempt -lt $max_attempts ]]; do
+        attempt=$((attempt + 1))
+
+        local response=$(zabbix_api_call "host.get" "{\"output\":[\"hostid\"],\"filter\":{\"host\":[\"${ZABBIX_HOSTNAME}\"]}}")
+
+        ZABBIX_HOST_ID=$(echo "$response" | python3 -c "
+import sys, json
+try:
+    r = json.load(sys.stdin)
+    if r.get('result') and len(r['result']) > 0:
+        print(r['result'][0]['hostid'])
+    else:
+        print('')
+except:
+    print('')
+" 2>/dev/null)
+
+        if [[ -n "$ZABBIX_HOST_ID" ]]; then
+            success "Host registered with ID: $ZABBIX_HOST_ID"
+            return 0
+        fi
+
+        info "Attempt $attempt/$max_attempts - host not yet registered, waiting 10s..."
+        sleep 10
+    done
+
+    warn "Host did not appear in Zabbix within 2 minutes"
+    warn "Tags and inventory will not be set automatically"
+    return 1
+}
+
+set_host_tags() {
+    info "Setting host tags..."
+
+    local tags="["
+    tags+="{\"tag\":\"device-type\",\"value\":\"raspberry-pi\"}"
+    tags+=",{\"tag\":\"os\",\"value\":\"raspbian\"}"
+
+    if [[ -n "$LOCATION" ]]; then
+        tags+=",{\"tag\":\"location\",\"value\":\"${LOCATION}\"}"
+    fi
+    if [[ -n "$CLIENT" ]]; then
+        tags+=",{\"tag\":\"client\",\"value\":\"${CLIENT}\"}"
+    fi
+    if [[ -n "$CHAIN" ]]; then
+        tags+=",{\"tag\":\"chain\",\"value\":\"${CHAIN}\"}"
+    fi
+
+    tags+="]"
+
+    local response=$(zabbix_api_call "host.update" "{\"hostid\":\"${ZABBIX_HOST_ID}\",\"tags\":${tags}}")
+
+    if echo "$response" | python3 -c "import sys,json; r=json.load(sys.stdin); assert r.get('result')" 2>/dev/null; then
+        success "Host tags set successfully"
+    else
+        warn "Failed to set host tags"
+    fi
+}
+
+collect_system_info_rpi() {
+    info "Collecting system information for inventory..."
+
+    # OS
+    if [[ -f /etc/os-release ]]; then
+        source /etc/os-release
+        INV_OS="${PRETTY_NAME:-${NAME} ${VERSION_ID}}"
+    else
+        INV_OS="Raspberry Pi OS"
+    fi
+
+    INV_TYPE="Raspberry Pi"
+
+    # Model
+    INV_MODEL=$(cat /proc/device-tree/model 2>/dev/null | tr -d '\0' || echo "Raspberry Pi")
+
+    # Serial number
+    INV_SERIAL=$(grep -i "serial" /proc/cpuinfo 2>/dev/null | awk -F': ' '{print $2}' || echo "")
+
+    # MAC address (try eth0, then wlan0)
+    INV_MAC=$(cat /sys/class/net/eth0/address 2>/dev/null || cat /sys/class/net/wlan0/address 2>/dev/null || echo "")
+
+    # CPU info
+    INV_HARDWARE=$(lscpu 2>/dev/null | grep "Model name" | cut -d: -f2 | xargs || grep -i "model name" /proc/cpuinfo 2>/dev/null | head -1 | cut -d: -f2 | xargs || echo "ARM")
+
+    # RAM
+    local ram_kb=$(grep MemTotal /proc/meminfo 2>/dev/null | awk '{print $2}' || echo "0")
+    INV_RAM="$((ram_kb / 1024)) MB"
+
+    # Software (kernel)
+    INV_SOFTWARE="$(uname -s -r) (${INV_OS})"
+
+    # Local IP (non-Tailscale)
+    INV_LOCAL_IP=$(hostname -I 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i !~ /^100\./) print $i}' | head -1 || echo "")
+
+    # Default gateway
+    INV_ROUTER=$(ip route show default 2>/dev/null | awk '{print $3; exit}' || echo "")
+
+    # Subnet mask (extract CIDR, convert to dotted)
+    local cidr=$(ip -4 addr show eth0 2>/dev/null | awk '/inet / {print $2}' | head -1 || echo "")
+    if [[ -n "$cidr" ]]; then
+        local prefix=${cidr##*/}
+        INV_SUBNET=$(python3 -c "
+bits = int('${prefix}')
+mask = (0xffffffff >> (32 - bits)) << (32 - bits)
+print(f'{(mask>>24)&0xff}.{(mask>>16)&0xff}.{(mask>>8)&0xff}.{mask&0xff}')
+" 2>/dev/null || echo "")
+        INV_NETWORK="${cidr}"
+    else
+        INV_SUBNET=""
+        INV_NETWORK=""
+    fi
+
+    success "System information collected"
+}
+
+set_host_inventory() {
+    info "Setting host inventory..."
+
+    local inventory_json=$(python3 -c "
+import json
+inv = {}
+def add(key, val):
+    if val:
+        inv[key] = str(val)
+
+add('os', '''${INV_OS}''')
+add('type', '''${INV_TYPE}''')
+add('model', '''${INV_MODEL}''')
+add('serialno_a', '''${INV_SERIAL}''')
+add('macaddress_a', '''${INV_MAC}''')
+add('hardware', '''${INV_HARDWARE}''')
+add('software', '''${INV_SOFTWARE}''')
+add('host_router', '''${INV_ROUTER}''')
+add('host_subnet', '''${INV_SUBNET}''')
+add('host_networks', '''${INV_NETWORK}''')
+add('notes', '''Tailscale IP: ${TAILSCALE_IP} | Local IP: ${INV_LOCAL_IP} | RAM: ${INV_RAM}''')
+add('location', '''${LOCATION}''')
+add('asset_tag', '''${ASSET_TAG}''')
+add('location_lat', '''${LATITUDE}''')
+add('location_lon', '''${LONGITUDE}''')
+print(json.dumps(inv))
+" 2>/dev/null)
+
+    if [[ -z "$inventory_json" || "$inventory_json" == "{}" ]]; then
+        warn "Could not build inventory JSON"
+        return 1
+    fi
+
+    local response=$(zabbix_api_call "host.update" "{\"hostid\":\"${ZABBIX_HOST_ID}\",\"inventory_mode\":1,\"inventory\":${inventory_json}}")
+
+    if echo "$response" | python3 -c "import sys,json; r=json.load(sys.stdin); assert r.get('result')" 2>/dev/null; then
+        success "Host inventory set successfully"
+    else
+        warn "Failed to set host inventory"
+    fi
+}
+
+configure_via_api() {
+    if [[ -z "$ZABBIX_API_TOKEN" ]]; then
+        info "No ZABBIX_API_TOKEN provided - skipping API configuration (tags, inventory)"
+        info "To enable, re-run with ZABBIX_API_TOKEN=your-token"
+        return 0
+    fi
+
+    if ! command -v curl &>/dev/null; then
+        warn "curl not found - skipping API configuration"
+        return 1
+    fi
+    if ! command -v python3 &>/dev/null; then
+        warn "python3 not found - skipping API configuration"
+        return 1
+    fi
+
+    local version_response=$(zabbix_api_call "apiinfo.version" "[]")
+    if ! echo "$version_response" | python3 -c "import sys,json; r=json.load(sys.stdin); assert r.get('result')" 2>/dev/null; then
+        warn "Could not connect to Zabbix API at ${ZABBIX_API_URL}"
+        warn "Skipping tags and inventory configuration"
+        return 1
+    fi
+
+    info "Zabbix API connection verified"
+
+    if ! wait_for_host_registration; then
+        return 1
+    fi
+
+    collect_system_info_rpi
+    set_host_tags
+    set_host_inventory
+
+    success "Zabbix API configuration complete"
+}
+
+# =============================================================================
 # MAIN EXECUTION
 # =============================================================================
 
@@ -707,13 +948,31 @@ main() {
     # Verify
     verify_installation
 
+    # Configure via API (tags, inventory) - runs after agent starts
+    configure_via_api
+
     echo ""
     echo -e "${GREEN}=============================================${NC}"
     echo -e "${GREEN}  INSTALLATION COMPLETE${NC}"
     echo -e "${GREEN}=============================================${NC}"
     echo ""
     echo "The agent should auto-register with the Zabbix server within 2 minutes."
-    echo "Check your Zabbix server's Configuration → Hosts to verify registration."
+    echo "Check your Zabbix server's Data collection → Hosts to verify registration."
+    echo ""
+    if [[ -n "$ZABBIX_API_TOKEN" ]]; then
+        echo "API Status:       Tags and inventory configured"
+    else
+        echo "API Status:       Skipped (no ZABBIX_API_TOKEN provided)"
+    fi
+    if [[ -n "$CLIENT" ]]; then
+        echo "Client:           ${CLIENT}"
+    fi
+    if [[ -n "$CHAIN" ]]; then
+        echo "Chain:            ${CHAIN}"
+    fi
+    if [[ -n "$ASSET_TAG" ]]; then
+        echo "Asset Tag:        ${ASSET_TAG}"
+    fi
     echo ""
     echo "To check agent status:  systemctl status zabbix-agent2"
     echo "To view agent logs:     tail -f /var/log/zabbix/zabbix_agent2.log"
