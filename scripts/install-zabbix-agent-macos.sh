@@ -506,8 +506,7 @@ Timeout=30
 # =============================================================================
 
 # Disable remote commands (security best practice)
-EnableRemoteCommands=0
-LogRemoteCommands=0
+DenyKey=system.run[*]
 
 # =============================================================================
 # LOGGING
@@ -656,6 +655,15 @@ UserParameter=macos.processes.total,ps aux 2>/dev/null | wc -l | xargs || echo "
 # Number of zombie processes
 UserParameter=macos.processes.zombie,ps aux 2>/dev/null | grep -c ' Z ' || echo "0"
 
+# Process count by name (compatible with proc.num key used by templates)
+# These override the built-in proc.num which doesn't work well on macOS
+UserParameter=proc.num[*],pgrep -x "$1" 2>/dev/null | wc -l | xargs || echo "0"
+
+# Specific critical process checks
+UserParameter=macos.proc.tailscaled,pgrep -x tailscaled 2>/dev/null | wc -l | xargs || echo "0"
+UserParameter=macos.proc.sshd,pgrep -x sshd 2>/dev/null | wc -l | xargs || echo "0"
+UserParameter=macos.proc.zabbix_agentd,pgrep -x zabbix_agentd 2>/dev/null | wc -l | xargs || echo "0"
+
 # =============================================================================
 # SECURITY MONITORING
 # =============================================================================
@@ -688,6 +696,27 @@ EOF
 # SERVICE MANAGEMENT
 # =============================================================================
 
+setup_log_directory() {
+    info "Setting up log directory with correct permissions..."
+
+    # Create log directory
+    mkdir -p "$ZABBIX_LOG_DIR"
+
+    # Set permissions - needs to be writable by the agent
+    chown root:wheel "$ZABBIX_LOG_DIR"
+    chmod 755 "$ZABBIX_LOG_DIR"
+
+    # Create log files with correct permissions
+    touch "$ZABBIX_LOG_DIR/zabbix_agentd.log"
+    touch "$ZABBIX_LOG_DIR/zabbix_agentd.stdout.log"
+    touch "$ZABBIX_LOG_DIR/zabbix_agentd.stderr.log"
+    chmod 644 "$ZABBIX_LOG_DIR/zabbix_agentd.log"
+    chmod 644 "$ZABBIX_LOG_DIR/zabbix_agentd.stdout.log"
+    chmod 644 "$ZABBIX_LOG_DIR/zabbix_agentd.stderr.log"
+
+    success "Log directory configured"
+}
+
 create_launchd_plist() {
     info "Creating launchd service configuration..."
 
@@ -695,23 +724,24 @@ create_launchd_plist() {
     local plist_file="/Library/LaunchDaemons/com.zabbix.zabbix_agentd.plist"
     local zabbix_agent_path=""
 
-    # Find the zabbix_agentd binary (Homebrew installs agentd, not agent2)
-    for path in \
-        "${BREW_PREFIX}/sbin/zabbix_agentd" \
-        "${BREW_PREFIX}/bin/zabbix_agentd" \
-        "${BREW_PREFIX}/opt/zabbix/sbin/zabbix_agentd" \
-        "$(brew --prefix zabbix 2>/dev/null)/sbin/zabbix_agentd" \
-        "/opt/homebrew/Cellar/zabbix/*/sbin/zabbix_agentd"
-    do
-        if [[ -f "$path" ]]; then
-            zabbix_agent_path="$path"
-            break
-        fi
-    done
+    # Find the zabbix_agentd binary - try Cellar path first (most reliable)
+    zabbix_agent_path=$(ls /opt/homebrew/Cellar/zabbix/*/sbin/zabbix_agentd 2>/dev/null | head -1)
 
-    # Try glob expansion for versioned path
-    if [[ -z "$zabbix_agent_path" ]]; then
-        zabbix_agent_path=$(ls /opt/homebrew/Cellar/zabbix/*/sbin/zabbix_agentd 2>/dev/null | head -1)
+    # Fallback to other locations
+    if [[ -z "$zabbix_agent_path" ]] || [[ ! -f "$zabbix_agent_path" ]]; then
+        for path in \
+            "${BREW_PREFIX}/opt/zabbix/sbin/zabbix_agentd" \
+            "${BREW_PREFIX}/sbin/zabbix_agentd" \
+            "${BREW_PREFIX}/bin/zabbix_agentd" \
+            "/usr/local/Cellar/zabbix/*/sbin/zabbix_agentd"
+        do
+            # Handle glob patterns
+            local expanded_path=$(ls $path 2>/dev/null | head -1)
+            if [[ -n "$expanded_path" ]] && [[ -f "$expanded_path" ]]; then
+                zabbix_agent_path="$expanded_path"
+                break
+            fi
+        done
     fi
 
     if [[ -z "$zabbix_agent_path" ]] || [[ ! -f "$zabbix_agent_path" ]]; then
@@ -719,6 +749,10 @@ create_launchd_plist() {
     fi
 
     info "Using binary: $zabbix_agent_path"
+
+    # Remove any existing plist and unload service
+    launchctl bootout system/com.zabbix.zabbix_agentd 2>/dev/null || true
+    rm -f "$plist_file" 2>/dev/null
 
     # Create the plist file
     cat > "$plist_file" << EOF
@@ -939,6 +973,9 @@ main() {
     # Configure
     configure_agent
     configure_macos_monitoring
+
+    # Setup log directory with correct permissions
+    setup_log_directory
 
     # Create and start service
     create_launchd_plist
