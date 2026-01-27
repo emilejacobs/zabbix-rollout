@@ -380,8 +380,8 @@ install_zabbix_repository() {
 install_zabbix_agent() {
     info "Installing Zabbix Agent 2..."
 
-    # Check if already installed
-    if dpkg -l | grep -q "zabbix-agent2"; then
+    # Check if already installed (look for 'ii' status specifically)
+    if dpkg -l zabbix-agent2 2>/dev/null | grep -q "^ii"; then
         warn "Zabbix Agent 2 is already installed"
 
         if [[ -t 0 ]]; then
@@ -415,6 +415,9 @@ configure_agent() {
 
     local config_file="/etc/zabbix/zabbix_agent2.conf"
     local config_backup="/etc/zabbix/zabbix_agent2.conf.backup.$(date +%Y%m%d%H%M%S)"
+
+    # Ensure config directories exist
+    mkdir -p /etc/zabbix/zabbix_agent2.d
 
     # Backup existing configuration
     if [[ -f "$config_file" ]]; then
