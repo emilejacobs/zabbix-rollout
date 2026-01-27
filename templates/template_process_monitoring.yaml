@@ -1,0 +1,73 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: f8f7908280354f2abeed07dc788c3747
+      name: Templates/Custom
+  templates:
+    - uuid: c5d8e9f0a1b24d4a85f6a7b8c9d0e1f2
+      template: 'Template Process Monitoring Active'
+      name: 'Template Process Monitoring Active'
+      description: 'Template for monitoring critical processes via active checks.'
+      groups:
+        - name: Templates/Custom
+      items:
+        - uuid: d1e2f3a4b5c64d7e89a0b1c2d3e4f5a6
+          name: 'Tailscale daemon running'
+          type: ZABBIX_ACTIVE
+          key: 'proc.num[tailscaled]'
+          delay: 30s
+          history: 7d
+          trends: 90d
+          value_type: UNSIGNED
+          description: 'Number of tailscaled processes running'
+          triggers:
+            - uuid: b1c2d3e4f5a64b7c89d0e1f2a3b4c5d6
+              expression: 'last(/Template Process Monitoring Active/proc.num[tailscaled])=0'
+              name: 'Tailscale daemon is not running on {HOST.NAME}'
+              priority: DISASTER
+              description: 'The Tailscale daemon is not running. This will cause loss of connectivity to this device.'
+        - uuid: e2f3a4b5c6d74e8f90b1c2d3e4f5a6b7
+          name: 'SSH daemon running'
+          type: ZABBIX_ACTIVE
+          key: 'proc.num[sshd]'
+          delay: 30s
+          history: 7d
+          trends: 90d
+          value_type: UNSIGNED
+          description: 'Number of sshd processes running'
+          triggers:
+            - uuid: c2d3e4f5a6b74c8d90e1f2a3b4c5d6e7
+              expression: 'last(/Template Process Monitoring Active/proc.num[sshd])=0'
+              name: 'SSH daemon is not running on {HOST.NAME}'
+              priority: HIGH
+              description: 'The SSH daemon is not running. Remote access will not be possible.'
+        - uuid: f3a4b5c6d7e84f9aa1c2d3e4f5a6b7c8
+          name: 'Zabbix agent running'
+          type: ZABBIX_ACTIVE
+          key: 'proc.num[zabbix_agent2]'
+          delay: 30s
+          history: 7d
+          trends: 90d
+          value_type: UNSIGNED
+          description: 'Number of zabbix_agent2 processes running'
+          triggers:
+            - uuid: d3e4f5a6b7c84d9ea1f2a3b4c5d6e7f8
+              expression: 'last(/Template Process Monitoring Active/proc.num[zabbix_agent2])=0'
+              name: 'Zabbix agent is not running on {HOST.NAME}'
+              priority: HIGH
+              description: 'The Zabbix agent is not running. Monitoring data will not be collected.'
+        - uuid: a4b5c6d7e8f94a0bb2d3e4f5a6b7c8d9
+          name: 'Total number of processes'
+          type: ZABBIX_ACTIVE
+          key: 'proc.num[]'
+          delay: 1m
+          history: 7d
+          trends: 90d
+          value_type: UNSIGNED
+          description: 'Total number of processes running on the system'
+          triggers:
+            - uuid: e4f5a6b7c8d94eafb2a3b4c5d6e7f8a9
+              expression: 'last(/Template Process Monitoring Active/proc.num[])>500'
+              name: 'High number of processes on {HOST.NAME}'
+              priority: WARNING
+              description: 'The system has more than 500 processes running, which may indicate a problem.'

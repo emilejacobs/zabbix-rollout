@@ -1,0 +1,228 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: f8f7908280354f2abeed07dc788c3747
+      name: Templates/Custom
+  templates:
+    - uuid: 2b3c4d5e6f7a4b8c9d0e1f2a3b4c5d6f
+      template: 'Template Hardware Mac Mini'
+      name: 'Template Hardware Mac Mini'
+      description: 'Hardware monitoring template for Mac Mini (Apple Silicon). Monitors system info, CPU, memory pressure, disk, security status.'
+      groups:
+        - name: Templates/Custom
+      items:
+        - uuid: 3c4d5e6f7a8b4c9d8e1f2a3b4c5d6e7a
+          name: 'macOS: Model name'
+          type: ZABBIX_ACTIVE
+          key: macos.model
+          delay: 1d
+          history: 7d
+          trends: '0'
+          value_type: TEXT
+          description: 'Mac model name'
+        - uuid: 4d5e6f7a8b9c4d8e9f2a3b4c5d6e7f8b
+          name: 'macOS: Model identifier'
+          type: ZABBIX_ACTIVE
+          key: macos.model.identifier
+          delay: 1d
+          history: 7d
+          trends: '0'
+          value_type: TEXT
+          description: 'Mac model identifier'
+        - uuid: 5e6f7a8b9c0d4e9f8a3b4c5d6e7f8a9c
+          name: 'macOS: Chip'
+          type: ZABBIX_ACTIVE
+          key: macos.chip
+          delay: 1d
+          history: 7d
+          trends: '0'
+          value_type: TEXT
+          description: 'Processor/chip name'
+        - uuid: 6f7a8b9c0d1e4f8a9b4c5d6e7f8a9b0d
+          name: 'macOS: CPU cores'
+          type: ZABBIX_ACTIVE
+          key: macos.cpu.cores
+          delay: 1d
+          history: 7d
+          trends: 90d
+          value_type: UNSIGNED
+          description: 'Number of CPU cores'
+        - uuid: 7a8b9c0d1e2f4a9b8c5d6e7f8a9b0c1e
+          name: 'macOS: Total memory'
+          type: ZABBIX_ACTIVE
+          key: macos.memory.total
+          delay: 1d
+          history: 7d
+          trends: 90d
+          value_type: UNSIGNED
+          units: B
+          description: 'Total physical memory in bytes'
+        - uuid: 8b9c0d1e2f3a4b8c9d6e7f8a9b0c1d2f
+          name: 'macOS: Version'
+          type: ZABBIX_ACTIVE
+          key: macos.version
+          delay: 1d
+          history: 7d
+          trends: '0'
+          value_type: TEXT
+          description: 'macOS version number'
+        - uuid: 9c0d1e2f3a4b4c9d8e7f8a9b0c1d2e3a
+          name: 'macOS: CPU usage'
+          type: ZABBIX_ACTIVE
+          key: macos.cpu.usage
+          delay: 1m
+          history: 7d
+          trends: 90d
+          value_type: FLOAT
+          units: '%'
+          description: 'Total CPU usage percentage'
+          triggers:
+            - uuid: 0d1e2f3a4b5c4d8e9f8a9b0c1d2e3f4b
+              expression: 'avg(/Template Hardware Mac Mini/macos.cpu.usage,5m)>90'
+              name: 'macOS: High CPU usage on {HOST.NAME}'
+              priority: WARNING
+              description: 'CPU usage is above 90% for 5 minutes'
+        - uuid: 1e2f3a4b5c6d4e9f8a9b0c1d2e3f4a5c
+          name: 'macOS: Load average (1m)'
+          type: ZABBIX_ACTIVE
+          key: macos.load.1min
+          delay: 1m
+          history: 7d
+          trends: 90d
+          value_type: FLOAT
+          description: '1-minute load average'
+        - uuid: 2f3a4b5c6d7e4f8a9b0c1d2e3f4a5b6d
+          name: 'macOS: Load average (5m)'
+          type: ZABBIX_ACTIVE
+          key: macos.load.5min
+          delay: 1m
+          history: 7d
+          trends: 90d
+          value_type: FLOAT
+          description: '5-minute load average'
+        - uuid: 3a4b5c6d7e8f4a9b8c1d2e3f4a5b6c7e
+          name: 'macOS: Memory pressure'
+          type: ZABBIX_ACTIVE
+          key: macos.memory.pressure
+          delay: 1m
+          history: 7d
+          trends: 90d
+          value_type: FLOAT
+          units: '%'
+          description: 'System memory pressure percentage'
+          triggers:
+            - uuid: 4b5c6d7e8f9a4b8c9d2e3f4a5b6c7d8f
+              expression: 'last(/Template Hardware Mac Mini/macos.memory.pressure)>80'
+              name: 'macOS: High memory pressure on {HOST.NAME}'
+              priority: WARNING
+              description: 'Memory pressure is above 80%'
+            - uuid: 5c6d7e8f9a0b4c9d8e3f4a5b6c7d8e9a
+              expression: 'last(/Template Hardware Mac Mini/macos.memory.pressure)>95'
+              name: 'macOS: Critical memory pressure on {HOST.NAME}'
+              priority: HIGH
+              description: 'Memory pressure is critically high'
+        - uuid: 6d7e8f9a0b1c4d8e9f4a5b6c7d8e9f0b
+          name: 'macOS: Swap used'
+          type: ZABBIX_ACTIVE
+          key: macos.swap.used
+          delay: 1m
+          history: 7d
+          trends: 90d
+          value_type: UNSIGNED
+          units: B
+          description: 'Swap space currently in use'
+        - uuid: 7e8f9a0b1c2d4e9f8a5b6c7d8e9f0a1c
+          name: 'macOS: Root disk usage'
+          type: ZABBIX_ACTIVE
+          key: macos.disk.root.pused
+          delay: 5m
+          history: 7d
+          trends: 90d
+          value_type: FLOAT
+          units: '%'
+          description: 'Root filesystem usage percentage'
+          triggers:
+            - uuid: 8f9a0b1c2d3e4f8a9b6c7d8e9f0a1b2d
+              expression: 'last(/Template Hardware Mac Mini/macos.disk.root.pused)>90'
+              name: 'macOS: Low disk space on {HOST.NAME}'
+              priority: WARNING
+              description: 'Root disk is more than 90% full'
+            - uuid: 9a0b1c2d3e4f4a9b8c7d8e9f0a1b2c3e
+              expression: 'last(/Template Hardware Mac Mini/macos.disk.root.pused)>95'
+              name: 'macOS: Critical disk space on {HOST.NAME}'
+              priority: HIGH
+              description: 'Root disk is more than 95% full'
+        - uuid: 0b1c2d3e4f5a4b8c9d8e9f0a1b2c3d4f
+          name: 'macOS: Root disk free'
+          type: ZABBIX_ACTIVE
+          key: macos.disk.root.free
+          delay: 5m
+          history: 7d
+          trends: 90d
+          value_type: UNSIGNED
+          units: B
+          description: 'Free space on root filesystem'
+        - uuid: 1c2d3e4f5a6b4c9d8e9f0a1b2c3d4e5a
+          name: 'macOS: Total processes'
+          type: ZABBIX_ACTIVE
+          key: macos.processes.total
+          delay: 1m
+          history: 7d
+          trends: 90d
+          value_type: UNSIGNED
+          description: 'Total number of running processes'
+        - uuid: 2d3e4f5a6b7c4d8e9f0a1b2c3d4e5f6b
+          name: 'macOS: FileVault status'
+          type: ZABBIX_ACTIVE
+          key: macos.filevault.status
+          delay: 1h
+          history: 7d
+          trends: 90d
+          value_type: UNSIGNED
+          description: 'FileVault encryption: 1=enabled, 0=disabled'
+          triggers:
+            - uuid: 3e4f5a6b7c8d4e9f8a1b2c3d4e5f6a7c
+              expression: 'last(/Template Hardware Mac Mini/macos.filevault.status)=0'
+              name: 'macOS: FileVault is disabled on {HOST.NAME}'
+              priority: WARNING
+              description: 'FileVault disk encryption is not enabled'
+        - uuid: 4f5a6b7c8d9e4f8a9b2c3d4e5f6a7b8d
+          name: 'macOS: SIP status'
+          type: ZABBIX_ACTIVE
+          key: macos.sip.status
+          delay: 1h
+          history: 7d
+          trends: 90d
+          value_type: UNSIGNED
+          description: 'System Integrity Protection: 1=enabled, 0=disabled'
+          triggers:
+            - uuid: 5a6b7c8d9e0f4a9b8c3d4e5f6a7b8c9e
+              expression: 'last(/Template Hardware Mac Mini/macos.sip.status)=0'
+              name: 'macOS: SIP is disabled on {HOST.NAME}'
+              priority: HIGH
+              description: 'System Integrity Protection is disabled'
+        - uuid: 6b7c8d9e0f1a4b8c9d4e5f6a7b8c9d0f
+          name: 'macOS: Firewall status'
+          type: ZABBIX_ACTIVE
+          key: macos.firewall.status
+          delay: 1h
+          history: 7d
+          trends: 90d
+          value_type: UNSIGNED
+          description: 'Application firewall: 1=enabled, 0=disabled'
+        - uuid: 7c8d9e0f1a2b4c9d8e5f6a7b8c9d0e1a
+          name: 'macOS: System uptime'
+          type: ZABBIX_ACTIVE
+          key: macos.uptime.seconds
+          delay: 1m
+          history: 7d
+          trends: 90d
+          value_type: UNSIGNED
+          units: s
+          description: 'System uptime in seconds'
+          triggers:
+            - uuid: 8d9e0f1a2b3c4d8e9f6a7b8c9d0e1f2b
+              expression: 'last(/Template Hardware Mac Mini/macos.uptime.seconds)<600'
+              name: 'macOS: System restarted on {HOST.NAME}'
+              priority: INFO
+              description: 'System was restarted in the last 10 minutes'

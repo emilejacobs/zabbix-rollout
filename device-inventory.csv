@@ -1,0 +1,14 @@
+hostname,device_type,os_type,tailscale_ip,location,ssh_user,ssh_port,status,notes
+# Raspberry Pi Devices (31 total)
+rpi-location-001,raspberrypi,raspbian,,location1,pi,22,pending,
+rpi-location-002,raspberrypi,raspbian,,location1,pi,22,pending,
+# Add more Raspberry Pi entries...
+
+# Radxa Rock Devices (2 total)
+radxa-location-001,radxa,debian,,location2,rock,22,pending,
+radxa-location-002,radxa,debian,,location2,rock,22,pending,
+
+# Mac Mini Devices (3 total)
+macmini-location-001,macmini,macos,,location3,admin,22,pending,
+macmini-location-002,macmini,macos,,location3,admin,22,pending,
+macmini-location-003,macmini,macos,,location3,admin,22,pending,

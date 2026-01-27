@@ -1,0 +1,133 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: f8f7908280354f2abeed07dc788c3747
+      name: Templates/Custom
+  templates:
+    - uuid: 1a2b3c4d5e6f4a7b8c9d0e1f2a3b4c5d
+      template: 'Template Hardware Raspberry Pi'
+      name: 'Template Hardware Raspberry Pi'
+      description: 'Hardware monitoring template for Raspberry Pi. Uses vcgencmd for temperature, voltage, and throttling status.'
+      groups:
+        - name: Templates/Custom
+      items:
+        - uuid: 2b3c4d5e6f7a4b8c9d0e1f2a3b4c5d6e
+          name: 'Raspberry Pi: CPU temperature'
+          type: ZABBIX_ACTIVE
+          key: rpi.cpu.temperature
+          delay: 1m
+          history: 7d
+          trends: 365d
+          value_type: FLOAT
+          units: '°C'
+          description: 'CPU temperature from vcgencmd measure_temp'
+          triggers:
+            - uuid: aa1b2c3d4e5f4a7b8c9d0e1f2a3b4c5d
+              expression: 'last(/Template Hardware Raspberry Pi/rpi.cpu.temperature)>80'
+              name: 'Raspberry Pi: High CPU temperature on {HOST.NAME} ({ITEM.LASTVALUE})'
+              priority: HIGH
+              description: 'CPU temperature is above 80°C. The device may throttle performance.'
+            - uuid: bb2c3d4e5f6a4b8c9d0e1f2a3b4c5d6e
+              expression: 'last(/Template Hardware Raspberry Pi/rpi.cpu.temperature)>85'
+              name: 'Raspberry Pi: Critical CPU temperature on {HOST.NAME}'
+              priority: DISASTER
+              description: 'CPU temperature is critically high (above 85°C). Immediate action required.'
+        - uuid: cc3d4e5f6a7b4c8d9e1f2a3b4c5d6e7f
+          name: 'Raspberry Pi: GPU temperature'
+          type: ZABBIX_ACTIVE
+          key: rpi.gpu.temperature
+          delay: 1m
+          history: 7d
+          trends: 365d
+          value_type: FLOAT
+          units: '°C'
+          description: 'GPU temperature from vcgencmd measure_temp'
+        - uuid: dd4e5f6a7b8c4d9e8f1a2b3c4d5e6f7a
+          name: 'Raspberry Pi: Core voltage'
+          type: ZABBIX_ACTIVE
+          key: rpi.voltage.core
+          delay: 5m
+          history: 7d
+          trends: 90d
+          value_type: FLOAT
+          units: V
+          description: 'Core voltage from vcgencmd measure_volts core'
+          triggers:
+            - uuid: ee5f6a7b8c9d4e8a9b2c3d4e5f6a7b8c
+              expression: 'last(/Template Hardware Raspberry Pi/rpi.voltage.core)<1.15'
+              name: 'Raspberry Pi: Low core voltage on {HOST.NAME}'
+              priority: WARNING
+              description: 'Core voltage is below normal. May indicate a power supply issue.'
+        - uuid: ff6a7b8c9d0e4f9a8c3d4e5f6a7b8c9d
+          name: 'Raspberry Pi: SDRAM-C voltage'
+          type: ZABBIX_ACTIVE
+          key: rpi.voltage.sdram_c
+          delay: 5m
+          history: 7d
+          trends: 90d
+          value_type: FLOAT
+          units: V
+          description: 'SDRAM controller voltage'
+        - uuid: 117b8c9d0e1f4a8bad4e5f6a7b8c9d0e
+          name: 'Raspberry Pi: ARM clock frequency'
+          type: ZABBIX_ACTIVE
+          key: rpi.clock.arm
+          delay: 1m
+          history: 7d
+          trends: 90d
+          value_type: UNSIGNED
+          units: Hz
+          description: 'ARM CPU clock frequency'
+        - uuid: 228c9d0e1f2a4b9cbe5f6a7b8c9d0e1f
+          name: 'Raspberry Pi: Core clock frequency'
+          type: ZABBIX_ACTIVE
+          key: rpi.clock.core
+          delay: 1m
+          history: 7d
+          trends: 90d
+          value_type: UNSIGNED
+          units: Hz
+          description: 'GPU core clock frequency'
+        - uuid: 339d0e1f2a3b4c8d9f6a7b8c9d0e1f2a
+          name: 'Raspberry Pi: Throttling status'
+          type: ZABBIX_ACTIVE
+          key: rpi.throttled
+          delay: 1m
+          history: 7d
+          trends: '0'
+          value_type: TEXT
+          description: 'Throttling status from vcgencmd get_throttled. 0x0 means no throttling.'
+          triggers:
+            - uuid: 44ae1f2a3b4c4d9e87b8c9d0e1f2a3b4
+              expression: 'last(/Template Hardware Raspberry Pi/rpi.throttled)<>"0x0"'
+              name: 'Raspberry Pi: Throttling detected on {HOST.NAME}'
+              priority: WARNING
+              description: 'The Raspberry Pi is experiencing throttling due to temperature or undervoltage.'
+        - uuid: 55bf2a3b4c5d4e8fa9c9d0e1f2a3b4c5
+          name: 'Raspberry Pi: GPU memory allocation'
+          type: ZABBIX_ACTIVE
+          key: rpi.memory.gpu
+          delay: 1h
+          history: 7d
+          trends: 90d
+          value_type: UNSIGNED
+          units: MB
+          description: 'GPU memory allocation'
+        - uuid: 66c03b4c5d6e4f9ab8d0e1f2a3b4c5d6
+          name: 'Raspberry Pi: Model'
+          type: ZABBIX_ACTIVE
+          key: rpi.model
+          delay: 1d
+          history: 7d
+          trends: '0'
+          value_type: TEXT
+          description: 'Raspberry Pi model name'
+        - uuid: 77d14c5d6e7f4a8bae1f2a3b4c5d6e7f
+          name: 'Raspberry Pi: Firmware version'
+          type: ZABBIX_ACTIVE
+          key: rpi.firmware
+          delay: 1d
+          history: 7d
+          trends: '0'
+          value_type: TEXT
+          description: 'Firmware version from vcgencmd'

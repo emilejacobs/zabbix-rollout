@@ -1,0 +1,145 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: f8f7908280354f2abeed07dc788c3747
+      name: Templates/Custom
+  templates:
+    - uuid: 6d7e8f9a0b1c4d8e9f4a5b6c7d8e9f0a
+      template: 'Template Hardware Radxa Rock'
+      name: 'Template Hardware Radxa Rock'
+      description: 'Hardware monitoring template for Radxa Rock devices. Monitors Rockchip SoC thermal zones, frequencies, and system info.'
+      groups:
+        - name: Templates/Custom
+      items:
+        - uuid: 7e8f9a0b1c2d4e8f9a5b6c7d8e9f0a1b
+          name: 'Radxa: CPU temperature'
+          type: ZABBIX_ACTIVE
+          key: radxa.cpu.temperature
+          delay: 1m
+          history: 7d
+          trends: 365d
+          value_type: FLOAT
+          units: '°C'
+          description: 'CPU temperature from thermal zone'
+          triggers:
+            - uuid: 8f9a0b1c2d3e4f8a9b6c7d8e9f0a1b2c
+              expression: 'last(/Template Hardware Radxa Rock/radxa.cpu.temperature)>80'
+              name: 'Radxa: High CPU temperature on {HOST.NAME}'
+              priority: HIGH
+              description: 'CPU temperature is above 80°C'
+            - uuid: 9a0b1c2d3e4f4a9b8c7d8e9f0a1b2c3d
+              expression: 'last(/Template Hardware Radxa Rock/radxa.cpu.temperature)>90'
+              name: 'Radxa: Critical CPU temperature on {HOST.NAME}'
+              priority: DISASTER
+              description: 'CPU temperature is critically high (above 90°C)'
+        - uuid: 0b1c2d3e4f5a4b8c9d8e9f0a1b2c3d4e
+          name: 'Radxa: GPU temperature'
+          type: ZABBIX_ACTIVE
+          key: radxa.gpu.temperature
+          delay: 1m
+          history: 7d
+          trends: 365d
+          value_type: FLOAT
+          units: '°C'
+          description: 'GPU temperature from thermal zone'
+          triggers:
+            - uuid: 1c2d3e4f5a6b4c8d9e9f0a1b2c3d4e5f
+              expression: 'last(/Template Hardware Radxa Rock/radxa.gpu.temperature)>85'
+              name: 'Radxa: High GPU temperature on {HOST.NAME}'
+              priority: HIGH
+              description: 'GPU temperature is above 85°C'
+        - uuid: 2d3e4f5a6b7c4d9e8f0a1b2c3d4e5f6a
+          name: 'Radxa: Thermal zones'
+          type: ZABBIX_ACTIVE
+          key: radxa.thermal.zones
+          delay: 1h
+          history: 7d
+          trends: '0'
+          value_type: TEXT
+          description: 'List of all available thermal zones'
+        - uuid: 3e4f5a6b7c8d4e8f9a1b2c3d4e5f6a7b
+          name: 'Radxa: CPU frequency (current)'
+          type: ZABBIX_ACTIVE
+          key: radxa.cpu.freq.current
+          delay: 1m
+          history: 7d
+          trends: 90d
+          value_type: UNSIGNED
+          units: Hz
+          description: 'Current CPU scaling frequency'
+        - uuid: 4f5a6b7c8d9e4f9a8b2c3d4e5f6a7b8c
+          name: 'Radxa: CPU frequency (maximum)'
+          type: ZABBIX_ACTIVE
+          key: radxa.cpu.freq.max
+          delay: 1h
+          history: 7d
+          trends: 90d
+          value_type: UNSIGNED
+          units: Hz
+          description: 'Maximum CPU scaling frequency'
+        - uuid: 5a6b7c8d9e0f4a8b9c3d4e5f6a7b8c9d
+          name: 'Radxa: CPU governor'
+          type: ZABBIX_ACTIVE
+          key: radxa.cpu.governor
+          delay: 5m
+          history: 7d
+          trends: '0'
+          value_type: TEXT
+          description: 'Current CPU frequency scaling governor'
+        - uuid: 6b7c8d9e0f1a4b9c8d4e5f6a7b8c9d0e
+          name: 'Radxa: GPU frequency'
+          type: ZABBIX_ACTIVE
+          key: radxa.gpu.freq.current
+          delay: 1m
+          history: 7d
+          trends: 90d
+          value_type: UNSIGNED
+          units: Hz
+          description: 'Current Mali GPU frequency'
+        - uuid: 7c8d9e0f1a2b4c8d9e5f6a7b8c9d0e1f
+          name: 'Radxa: NPU frequency'
+          type: ZABBIX_ACTIVE
+          key: radxa.npu.freq
+          delay: 5m
+          history: 7d
+          trends: 90d
+          value_type: UNSIGNED
+          units: Hz
+          description: 'NPU frequency (RK3588 only)'
+        - uuid: 8d9e0f1a2b3c4d9e8f6a7b8c9d0e1f2a
+          name: 'Radxa: DDR frequency'
+          type: ZABBIX_ACTIVE
+          key: radxa.ddr.freq
+          delay: 5m
+          history: 7d
+          trends: 90d
+          value_type: UNSIGNED
+          units: Hz
+          description: 'DDR memory controller frequency'
+        - uuid: 9e0f1a2b3c4d4e8f9a7b8c9d0e1f2a3b
+          name: 'Radxa: Device model'
+          type: ZABBIX_ACTIVE
+          key: radxa.model
+          delay: 1d
+          history: 7d
+          trends: '0'
+          value_type: TEXT
+          description: 'Device model from device tree'
+        - uuid: 0f1a2b3c4d5e4f9a8b8c9d0e1f2a3b4c
+          name: 'Radxa: SoC compatible'
+          type: ZABBIX_ACTIVE
+          key: radxa.soc
+          delay: 1d
+          history: 7d
+          trends: '0'
+          value_type: TEXT
+          description: 'SoC compatible string'
+        - uuid: 1a2b3c4d5e6f4a8b9c9d0e1f2a3b4c5e
+          name: 'Radxa: Kernel version'
+          type: ZABBIX_ACTIVE
+          key: radxa.kernel
+          delay: 1d
+          history: 7d
+          trends: '0'
+          value_type: TEXT
+          description: 'Running kernel version'
