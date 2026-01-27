@@ -664,6 +664,10 @@ UserParameter=macos.proc.tailscaled,pgrep -x tailscaled 2>/dev/null | wc -l | xa
 UserParameter=macos.proc.sshd,pgrep -x sshd 2>/dev/null | wc -l | xargs || echo "0"
 UserParameter=macos.proc.zabbix_agentd,pgrep -x zabbix_agentd 2>/dev/null | wc -l | xargs || echo "0"
 
+# Alias for cross-platform template compatibility
+# Template checks for zabbix_agent2 (Linux) but macOS runs zabbix_agentd
+UserParameter=proc.num[zabbix_agent2],pgrep -x zabbix_agentd 2>/dev/null | wc -l | xargs || echo "0"
+
 # =============================================================================
 # SECURITY MONITORING
 # =============================================================================
