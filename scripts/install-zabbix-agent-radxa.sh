@@ -15,6 +15,7 @@
 #
 # Environment Variables:
 #   LOCATION          (required) Location identifier (e.g., london, office-1)
+#   DEVICE_NAME       (optional) Custom hostname (skips auto-generation)
 #   ZABBIX_API_TOKEN  (optional) API token for setting tags and inventory
 #   CLIENT            (optional) Client name tag
 #   CHAIN             (optional) Chain/group tag
@@ -46,6 +47,9 @@ ZABBIX_VERSION="7.4"
 # Zabbix API
 ZABBIX_API_URL="https://${ZABBIX_SERVER_IP}/api_jsonrpc.php"
 ZABBIX_API_TOKEN="${ZABBIX_API_TOKEN:-}"
+
+# Optional: Custom hostname (overrides auto-generation)
+DEVICE_NAME="${DEVICE_NAME:-}"
 
 # Optional: Host tags
 CLIENT="${CLIENT:-}"
@@ -313,6 +317,11 @@ get_tailscale_ip() {
 generate_hostname() {
     local provided_hostname="$1"
     local provided_location="$2"
+
+    # DEVICE_NAME env var takes priority
+    if [[ -n "$DEVICE_NAME" ]]; then
+        provided_hostname="$DEVICE_NAME"
+    fi
 
     if [[ -n "$provided_hostname" ]]; then
         ZABBIX_HOSTNAME="$provided_hostname"
@@ -996,14 +1005,34 @@ configure_via_api() {
         return 1
     fi
 
-    local version_response=$(zabbix_api_call "apiinfo.version" "[]")
+    info "Testing Zabbix API at ${ZABBIX_API_URL}..."
+    local version_response=$(curl -sk -X POST \
+        -H "Content-Type: application/json" \
+        -d '{"jsonrpc":"2.0","method":"apiinfo.version","params":[],"id":1}' \
+        "${ZABBIX_API_URL}" 2>&1)
+
+    if [[ -z "$version_response" ]]; then
+        warn "No response from Zabbix API at ${ZABBIX_API_URL}"
+        warn "Skipping tags and inventory configuration"
+        return 1
+    fi
+
     if ! echo "$version_response" | python3 -c "import sys,json; r=json.load(sys.stdin); assert r.get('result')" 2>/dev/null; then
-        warn "Could not connect to Zabbix API at ${ZABBIX_API_URL}"
+        warn "Unexpected API response: $version_response"
         warn "Skipping tags and inventory configuration"
         return 1
     fi
 
     info "Zabbix API connection verified"
+
+    local token_test=$(zabbix_api_call "host.get" "{\"output\":[\"hostid\"],\"limit\":1}")
+    if echo "$token_test" | python3 -c "import sys,json; r=json.load(sys.stdin); assert 'error' in r" 2>/dev/null; then
+        warn "API token authentication failed"
+        warn "Skipping tags and inventory configuration"
+        return 1
+    fi
+
+    info "API token verified"
 
     if ! wait_for_host_registration; then
         return 1
