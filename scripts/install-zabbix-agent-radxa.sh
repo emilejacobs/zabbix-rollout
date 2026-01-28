@@ -439,7 +439,7 @@ install_zabbix_repository() {
     fi
 
     # Install repository package
-    dpkg -i "$repo_deb" || fatal "Failed to install Zabbix repository package"
+    DEBIAN_FRONTEND=noninteractive dpkg --force-confnew -i "$repo_deb" || fatal "Failed to install Zabbix repository package"
     rm -f "$repo_deb"
 
     # Update package lists
