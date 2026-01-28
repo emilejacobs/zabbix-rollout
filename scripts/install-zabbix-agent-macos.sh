@@ -312,6 +312,8 @@ get_tailscale_ip() {
         tailscale_cmd="/Applications/Tailscale.app/Contents/MacOS/Tailscale"
     elif command -v tailscale &>/dev/null; then
         tailscale_cmd="tailscale"
+    elif [[ -f "/opt/homebrew/bin/tailscale" ]]; then
+        tailscale_cmd="/opt/homebrew/bin/tailscale"
     elif [[ -f "/usr/local/bin/tailscale" ]]; then
         tailscale_cmd="/usr/local/bin/tailscale"
     fi
